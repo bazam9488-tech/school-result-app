@@ -7,7 +7,7 @@ import io
 
 # 1. Database Setup
 def init_db():
-    conn = sqlite3.connect('school_final_v2.db') # New name to reset table
+    conn = sqlite3.connect('school_final_v4.db') # Database version updated
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS results 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, f_name TEXT, 
@@ -17,10 +17,17 @@ def init_db():
     conn.close()
 
 def save_to_db(name, f_name, s_class, roll_no, section, total, obtained, percentage, grade):
-    conn = sqlite3.connect('school_final_v2.db')
+    conn = sqlite3.connect('school_final_v4.db')
     c = conn.cursor()
     c.execute("INSERT INTO results (name, f_name, s_class, roll_no, section, total, obtained, percentage, grade, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               (name, f_name, s_class, roll_no, section, total, obtained, percentage, grade, datetime.now().strftime("%d-%m-%Y")))
+    conn.commit()
+    conn.close()
+
+def delete_record(id):
+    conn = sqlite3.connect('school_final_v4.db')
+    c = conn.cursor()
+    c.execute("DELETE FROM results WHERE id=?", (id,))
     conn.commit()
     conn.close()
 
@@ -29,7 +36,7 @@ class ResultCard(FPDF):
     def __init__(self, logo_path=None):
         super().__init__()
         self.logo_path = logo_path
-        self.theme_color = (120, 150, 170) # Grey-Blue theme from image
+        self.theme_color = (120, 150, 170)
 
     def draw_border(self):
         self.set_line_width(0.8)
@@ -40,35 +47,40 @@ class ResultCard(FPDF):
 
     def header(self):
         self.draw_border()
+        # Logo Section
         if self.logo_path:
             try:
                 self.image(self.logo_path, 12, 12, 23)
                 self.set_xy(10, 36)
-                self.set_font("Arial", 'B', 7)
-                self.cell(28, 4, "ANNUAL REPORT CARD", ln=True, align='C')
+                self.set_font("Arial", '', 7)
+                self.cell(30, 4, "ANNUAL REPORT CARD", ln=True, align='C')
                 self.set_x(10)
-                self.cell(28, 4, "Session 2025-2026", ln=True, align='C')
+                self.set_font("Arial", 'B', 8) # Session Bold under logo
+                self.cell(30, 4, "Session 2025-2026", ln=True, align='C')
             except: pass
         
+        # Center Headers
         self.set_y(10)
         self.set_font("Arial", 'B', 10)
         self.cell(0, 5, "SCHOOL EDUCATION DEPARTMENT", ln=True, align='C')
         self.set_font("Arial", 'B', 16)
-        self.cell(0, 8, "GOVT. HIGH SCHOOL BHUTTA MOHABBAT", ln=True, align='C')
+        self.cell(0, 8, "GOVT. HIGH SCHOOL BHUTTA MOHABBAT", ln=True, align='C') #
         self.set_font("Arial", '', 10)
-        self.cell(0, 5, "EMIS CODE: 39310025 | DISTRICT OKARA", ln=True, align='C')
+        self.cell(0, 5, "EMIS CODE: 39310025 | DISTRICT OKARA", ln=True, align='C') #
         
-        self.set_y(32)
+        # Main Title (Only one instance)
+        self.ln(2)
         self.set_font("Arial", 'B', 18)
         self.set_text_color(100, 120, 140)
-        self.cell(0, 10, "STUDENT REPORT CARD", ln=True, align='L')
-        self.set_font("Arial", 'B', 10)
-        self.cell(0, 5, "ACADEMIC YEAR: 2025-26", ln=True, align='L')
-        self.ln(5)
+        self.cell(0, 10, "STUDENT REPORT CARD", ln=True, align='C') #
+        self.set_text_color(0, 0, 0)
+        self.ln(8)
 
 # 3. Streamlit Interface
 init_db()
 st.set_page_config(page_title="GHS Result System", layout="wide")
+
+st.markdown("### 🏫 GHS Bhutta Mohabbat - Digital Result System")
 
 with st.expander("📝 Enter Student Data", expanded=True):
     uploaded_logo = st.file_uploader("Upload Logo", type=['png','jpg','jpeg'])
@@ -97,29 +109,27 @@ if submit and name:
     t_m = sum([m[0] for m in marks_data.values()])
     o_m = sum([m[1] for m in marks_data.values()])
     perc = (o_m / t_m * 100) if t_m > 0 else 0
-    grade = "A+" if perc >= 80 else "A" if perc >= 70 else "B" # Simple logic
+    grade = "A+" if perc >= 80 else "A" if perc >= 70 else "B" if perc >= 60 else "C"
     
     save_to_db(name, f_name, s_class, roll_no, section, t_m, o_m, perc, grade)
     
     pdf = ResultCard(logo_path=uploaded_logo)
     pdf.add_page()
     
-    # --- Student Info Layout (Matching Image) ---
+    # --- Student Information Bars ---
     pdf.set_fill_color(120, 150, 170)
     pdf.set_text_color(255,255,255)
     pdf.set_font("Arial", 'B', 9)
-    
-    # Line 1: Name and Father Name
+    # Row 1
     pdf.cell(95, 8, f" NAME: {name.upper()}", fill=True, border='LBT')
     pdf.cell(95, 8, f" FATHER NAME: {f_name.upper()}", fill=True, border='RBT', ln=True)
     pdf.ln(1)
-    
-    # Line 2: Class, Roll No, Section (One Bar)
+    # Row 2
     pdf.cell(63.3, 8, f" CLASS: {s_class}", fill=True, border='LBT')
     pdf.cell(63.3, 8, f" ROLL NO: {roll_no}", fill=True, border='BT')
     pdf.cell(63.4, 8, f" SECTION: {section}", fill=True, border='RBT', ln=True)
     
-    # Table
+    # Marks Table
     pdf.ln(5)
     pdf.set_fill_color(60, 60, 60)
     pdf.cell(90, 10, " SUBJECT", border=1, fill=True, align='C')
@@ -140,31 +150,45 @@ if submit and name:
     pdf.cell(50, 10, f"{t_m}", border=1, fill=True, align='C')
     pdf.cell(50, 10, f"{o_m}", border=1, fill=True, align='C', ln=True)
 
-    # Performance Stats
+    # Stats
     pdf.ln(5)
-    w = 190 / 4
     pdf.set_font("Arial", '', 8)
+    w = 190 / 4
     pdf.cell(w, 10, f"PERCENTAGE: {perc:.1f}%", border=1, align='C')
     pdf.cell(w, 10, f"POSITION: ---", border=1, align='C')
     pdf.cell(w, 10, f"PERFORMANCE: Excellent", border=1, align='C')
     pdf.cell(w, 10, f"FINAL GRADE: {grade}", border=1, align='C', ln=True)
 
-    # Date and Signatures
+    # Signatures (Fixed at Bottom)
     pdf.set_y(260)
     pdf.set_font("Arial", 'I', 8)
     pdf.cell(0, 5, f"Date of Issue: {datetime.now().strftime('%d-%m-%Y')}", ln=True, align='L')
-    pdf.ln(5)
+    pdf.ln(2)
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(95, 5, "____________________", align='C')
     pdf.cell(95, 5, "____________________", ln=True, align='C')
     pdf.cell(95, 5, "CLASS TEACHER", align='C')
     pdf.cell(95, 5, "SENIOR HEAD MASTER (SAFDAR JAVED)", ln=True, align='C')
 
-    st.success("Result Generated!")
+    st.success("Result Card Generated!")
     st.download_button("Download PDF", data=bytes(pdf.output()), file_name=f"{roll_no}_{name}.pdf")
 
-# Data View
+# Database & Excel Export
 st.write("---")
-conn = sqlite3.connect('school_final_v2.db')
-df = pd.read_sql_query("SELECT * FROM results", conn)
-st.dataframe(df)
+st.subheader("📊 Saved Records")
+conn = sqlite3.connect('school_final_v4.db')
+df = pd.read_sql_query("SELECT * FROM results ORDER BY id DESC", conn)
+conn.close()
+
+if not df.empty:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False)
+    st.download_button("🟢 Export Database to Excel", data=buffer.getvalue(), file_name="GHS_Records.xlsx")
+    
+    for idx, row in df.iterrows():
+        c_a, c_b, c_c = st.columns([5, 2, 1])
+        c_a.write(f"**{row['name']}** (Roll: {row['roll_no']}) | Class: {row['s_class']} | Section: {row['section']}")
+        if c_c.button("Delete", key=f"d_{row['id']}"):
+            delete_record(row['id'])
+            st.rerun()
