@@ -6,7 +6,7 @@ import io
 
 # 1. Database Setup
 def init_db():
-    conn = sqlite3.connect('school_final_v5.db')
+    conn = sqlite3.connect('school_final_v7.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS results 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, f_name TEXT, 
@@ -16,17 +16,10 @@ def init_db():
     conn.close()
 
 def save_to_db(name, f_name, s_class, roll_no, section, total, obtained, percentage, grade):
-    conn = sqlite3.connect('school_final_v5.db')
+    conn = sqlite3.connect('school_final_v7.db')
     c = conn.cursor()
     c.execute("INSERT INTO results (name, f_name, s_class, roll_no, section, total, obtained, percentage, grade, date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               (name, f_name, s_class, roll_no, section, total, obtained, percentage, grade, "31-03-2026"))
-    conn.commit()
-    conn.close()
-
-def delete_record(id):
-    conn = sqlite3.connect('school_final_v5.db')
-    c = conn.cursor()
-    c.execute("DELETE FROM results WHERE id=?", (id,))
     conn.commit()
     conn.close()
 
@@ -35,23 +28,23 @@ class ResultCard(FPDF):
     def __init__(self, logo_path=None):
         super().__init__()
         self.logo_path = logo_path
-        self.theme_color = (120, 150, 170)
+        self.set_auto_page_break(auto=False) # Important: Disable auto break to keep on one page
 
     def draw_border(self):
         self.set_line_width(0.8)
         self.set_draw_color(120, 150, 170)
-        self.rect(5, 5, 200, 287) 
+        self.rect(5, 5, 200, 287) # Outer
         self.set_line_width(0.2)
-        self.rect(7, 7, 196, 283)
+        self.rect(7, 7, 196, 283) # Inner
 
     def header(self):
         self.draw_border()
         if self.logo_path:
             try:
-                self.image(self.logo_path, 12, 12, 23)
-                self.set_xy(10, 36)
-                self.set_font("Arial", 'B', 8) # Session Bold under logo
-                self.cell(28, 5, "Session 2025-2026", ln=True, align='C') #
+                self.image(self.logo_path, 12, 12, 22)
+                self.set_xy(12, 35)
+                self.set_font("Arial", 'B', 7)
+                self.cell(22, 4, "Session 2025-2026", ln=True, align='C') #
             except: pass
         
         self.set_y(10)
@@ -67,7 +60,7 @@ class ResultCard(FPDF):
         self.set_text_color(100, 120, 140)
         self.cell(0, 10, "STUDENT REPORT CARD", ln=True, align='C') #
         self.set_text_color(0, 0, 0)
-        self.ln(8)
+        self.ln(5)
 
 # 3. Streamlit Interface
 init_db()
@@ -107,7 +100,7 @@ if submit and name:
     pdf = ResultCard(logo_path=uploaded_logo)
     pdf.add_page()
     
-    # --- Student Information Bar ---
+    # --- Compact Student Info ---
     pdf.set_fill_color(120, 150, 170)
     pdf.set_text_color(255,255,255)
     pdf.set_font("Arial", 'B', 9)
@@ -118,12 +111,12 @@ if submit and name:
     pdf.cell(63.3, 8, f" ROLL NO: {roll_no}", fill=True, border='BT')
     pdf.cell(63.4, 8, f" SECTION: {section}", fill=True, border='RBT', ln=True)
     
-    # Table Content
-    pdf.ln(5)
+    # Marks Table (8mm row height to save space)
+    pdf.ln(4)
     pdf.set_fill_color(60, 60, 60)
-    pdf.cell(90, 10, " SUBJECT", border=1, fill=True, align='C')
-    pdf.cell(50, 10, " TOTAL MARKS", border=1, fill=True, align='C')
-    pdf.cell(50, 10, " OBTAINED", border=1, fill=True, align='C', ln=True)
+    pdf.cell(90, 9, " SUBJECT", border=1, fill=True, align='C')
+    pdf.cell(50, 9, " TOTAL MARKS", border=1, fill=True, align='C')
+    pdf.cell(50, 9, " OBTAINED", border=1, fill=True, align='C', ln=True)
     
     pdf.set_text_color(0,0,0)
     pdf.set_font("Arial", '', 9)
@@ -132,45 +125,49 @@ if submit and name:
         pdf.cell(50, 8, f"{m[0]}", border=1, align='C')
         pdf.cell(50, 8, f"{m[1]}", border=1, align='C', ln=True)
 
-    # Grand Total & Stats
+    # Grand Total
     pdf.set_font("Arial", 'B', 9)
     pdf.set_fill_color(230, 235, 240)
     pdf.cell(90, 10, " GRAND TOTAL", border=1, fill=True)
     pdf.cell(50, 10, f"{t_m}", border=1, fill=True, align='C')
     pdf.cell(50, 10, f"{o_m}", border=1, fill=True, align='C', ln=True)
 
-    pdf.ln(5)
+    # Performance Stats
+    pdf.ln(4)
     pdf.set_font("Arial", '', 8)
-    w = 190 / 4
-    pdf.cell(w, 10, f"PERCENTAGE: {perc:.1f}%", border=1, align='C')
-    pdf.cell(w, 10, f"POSITION: ---", border=1, align='C')
-    pdf.cell(w, 10, f"PERFORMANCE: Excellent", border=1, align='C')
-    pdf.cell(w, 10, f"FINAL GRADE: {grade}", border=1, align='C', ln=True)
+    w_box = 190 / 4
+    pdf.cell(w_box, 10, f"PERCENTAGE: {perc:.1f}%", border=1, align='C')
+    pdf.cell(w_box, 10, f"POSITION: ---", border=1, align='C')
+    pdf.cell(w_box, 10, f"PERFORMANCE: Excellent", border=1, align='C')
+    pdf.cell(w_box, 10, f"FINAL GRADE: {grade}", border=1, align='C', ln=True)
 
-    # --- Educational Quote Section ---
-    pdf.set_y(245)
-    pdf.set_font("Arial", 'I', 10)
-    pdf.set_text_color(100, 100, 100)
-    quote = '"Education is the most powerful weapon which you can use to change the world."'
-    pdf.cell(0, 10, quote, ln=True, align='C')
+    # --- Bold Educational Quotes ---
+    pdf.set_y(225) # Slightly up to ensure space
+    pdf.set_font("Arial", 'BI', 10)
+    pdf.set_text_color(80, 80, 80)
+    pdf.cell(0, 8, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
+    pdf.cell(0, 8, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
 
-    # Signatures - Fixed on First Page
-    pdf.set_y(260)
+    # --- Signatures & Date (Fixed Bottom) ---
+    pdf.set_y(255)
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", 'B', 8)
-    pdf.cell(0, 5, "Result Declaration Date: 31-03-2026", ln=True, align='L') # Fixed Date
-    pdf.ln(2)
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(95, 5, "____________________", align='C')
     pdf.cell(95, 5, "____________________", ln=True, align='C')
     pdf.cell(95, 5, "CLASS TEACHER", align='C')
     pdf.cell(95, 5, "SENIOR HEAD MASTER (SAFDAR JAVED)", ln=True, align='C')
 
+    # Date shifted to right side under Head Master
+    pdf.set_y(270)
+    pdf.set_x(110)
+    pdf.set_font("Arial", 'B', 8)
+    pdf.cell(85, 5, "Result Declaration Date: 31-03-2026", align='R', ln=True)
+
     st.success("Result Card Generated!")
     st.download_button("Download PDF", data=bytes(pdf.output()), file_name=f"{roll_no}_{name}.pdf")
 
-# Database Display
+# Data History
 st.write("---")
-conn = sqlite3.connect('school_final_v5.db')
+conn = sqlite3.connect('school_final_v7.db')
 df = pd.read_sql_query("SELECT * FROM results ORDER BY id DESC", conn)
 st.dataframe(df, use_container_width=True)
