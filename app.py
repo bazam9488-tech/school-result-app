@@ -1,6 +1,7 @@
 import streamlit as st
 from fpdf import FPDF
 import datetime
+import PIL.Image as Image
 
 # --- School Details ---
 SCHOOL_NAME = "GOVT. HIGH SCHOOL BHUTTA MOHABBAT"
@@ -16,11 +17,17 @@ def get_auto_grade(per):
     else: return "F"
 
 class PDF(FPDF):
+    def __init__(self, logo_path=None):
+        super().__init__()
+        self.logo_path = logo_path
+
     def header(self):
         self.set_line_width(0.5)
         self.rect(5, 5, 200, 287) 
-        # Logo placeholder (If you have a logo.png file in your repo)
-        # self.image('logo.png', 10, 8, 25) 
+        
+        if self.logo_path:
+            self.image(self.logo_path, 10, 8, 25)
+            
         self.set_font('Arial', 'B', 10)
         self.cell(0, 5, 'SCHOOL EDUCATION DEPARTMENT', ln=True, align='C')
         self.set_font('Arial', 'B', 16)
@@ -29,8 +36,8 @@ class PDF(FPDF):
         self.cell(0, 5, f'EMIS CODE: {EMIS_CODE}', ln=True, align='C')
         self.ln(10)
 
-def generate_pdf(data):
-    pdf = PDF()
+def generate_pdf(data, logo_file):
+    pdf = PDF(logo_path=logo_file)
     pdf.add_page()
     
     # Student Info
@@ -48,7 +55,7 @@ def generate_pdf(data):
     pdf.cell(95, 8, f" SECTION: {data['section']}", fill=True, ln=True)
     pdf.ln(10)
 
-    # Table Header
+    # Marks Table
     pdf.set_fill_color(50, 50, 50)
     pdf.cell(100, 8, ' SUBJECT', 1, 0, 'L', True)
     pdf.cell(45, 8, ' TOTAL MARKS', 1, 0, 'C', True)
@@ -56,7 +63,7 @@ def generate_pdf(data):
 
     pdf.set_text_color(0, 0, 0)
     pdf.set_font('Arial', '', 10)
-    for s, m in data['selected_marks'].items():
+    for s, m in data['marks'].items():
         pdf.cell(100, 8, f" {s}", 1)
         pdf.cell(45, 8, str(m[0]), 1, 0, 'C')
         pdf.cell(50, 8, str(m[1]), 1, 1, 'C')
@@ -67,7 +74,7 @@ def generate_pdf(data):
     pdf.cell(45, 8, str(data['t_total']), 1, 0, 'C')
     pdf.cell(50, 8, str(data['t_obt']), 1, 1, 'C')
     
-    # Metrics Box
+    # Metrics
     pdf.ln(10)
     pdf.set_font('Arial', '', 8)
     cols = ["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]
@@ -82,7 +89,7 @@ def generate_pdf(data):
     pdf.cell(0, 5, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
     pdf.cell(0, 5, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
 
-    # Footer
+    # Footer Signatures
     pdf.ln(20)
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(90, 0, '', 'T', 0, 'C')
@@ -96,13 +103,15 @@ def generate_pdf(data):
 
     return pdf.output()
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Result Generator", layout="wide")
-st.title("📊 GHS Bhutta Mohabbat - Result System")
+# --- Streamlit Sidebar (Logo & Settings) ---
+st.sidebar.title("App Settings")
+logo_upload = st.sidebar.file_uploader("Upload School Logo", type=['png', 'jpg', 'jpeg'])
 
-# Session state to store PDF
-if 'pdf_data' not in st.session_state:
-    st.session_state.pdf_data = None
+# --- Main UI ---
+st.title("📋 GHS Bhutta Mohabbat - Result System")
+
+if 'generated_pdf' not in st.session_state:
+    st.session_state.generated_pdf = None
 
 with st.form("master_form"):
     c1, c2, c3 = st.columns(3)
@@ -118,49 +127,46 @@ with st.form("master_form"):
     pos = st.text_input("Position", "---")
     res_date = st.date_input("Result Declaration Date", datetime.date(2026, 3, 31))
 
-    st.divider()
     st.subheader("Select Subjects & Enter Marks")
+    subs_list = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
+    marks_input = {}
     
-    all_subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
-    selected_marks = {}
-    
-    cols = st.columns(4)
-    for i, s in enumerate(all_subs):
-        with cols[i % 4]:
-            is_selected = st.checkbox(s, value=True, key=f"check_{s}")
-            if is_selected:
-                # logic for default marks
-                def_total = 75 if s == "Islamiat" else 50
-                tm = st.number_input(f"Total ({s})", value=def_total, key=f"t_{s}")
-                om = st.number_input(f"Obtained ({s})", value=0, key=f"o_{s}")
-                selected_marks[s] = [tm, om]
+    cols = st.columns(2)
+    for i, s in enumerate(subs_list):
+        with cols[i % 2]:
+            st.write(f"**{s}**")
+            cb_col, t_col, o_col = st.columns([1, 2, 2])
+            is_on = cb_col.checkbox("On", value=True, key=f"cb_{s}")
+            if is_on:
+                def_t = 75 if s == "Islamiat" else 50 #
+                t_val = t_col.number_input("Total", value=def_t, key=f"t_{s}")
+                o_val = o_col.number_input("Obtained", value=0, key=f"o_{s}")
+                marks_input[s] = [t_val, o_val]
 
-    submitted = st.form_submit_button("Generate Result Data")
+    if st.form_submit_button("Generate Report Card Data"):
+        if marks_input:
+            t_sum = sum(v[0] for v in marks_input.values())
+            o_sum = sum(v[1] for v in marks_input.values())
+            per = round((o_sum / t_sum) * 100, 1) if t_sum > 0 else 0
+            
+            final_payload = {
+                "name": name, "father": father, "class": s_class, "roll": roll, 
+                "section": section, "marks": marks_input, "t_total": t_sum, 
+                "t_obt": o_sum, "per": per, "grade": get_auto_grade(per), 
+                "perf": perf, "pos": pos, "date": res_date.strftime("%d-%m-%Y")
+            }
+            
+            st.session_state.generated_pdf = generate_pdf(final_payload, logo_upload)
+            st.session_state.st_name = name
+            st.success("Data processed! Download button is active below.")
+        else:
+            st.error("Please select at least one subject.")
 
-if submitted:
-    if not selected_marks:
-        st.error("Kam az kam ek subject select karein!")
-    else:
-        t_total = sum(m[0] for m in selected_marks.values())
-        t_obt = sum(m[1] for m in selected_marks.values())
-        per = round((t_obt / t_total) * 100, 1) if t_total > 0 else 0
-        auto_grade = get_auto_grade(per)
-        
-        final_data = {
-            "name": name, "father": father, "class": s_class, "roll": roll, 
-            "section": section, "selected_marks": selected_marks, "t_total": t_total, 
-            "t_obt": t_obt, "per": per, "grade": auto_grade, "perf": perf, "pos": pos,
-            "date": res_date.strftime("%d-%m-%Y")
-        }
-        st.session_state.pdf_data = generate_pdf(final_data)
-        st.session_state.file_name = f"{name}_Result.pdf"
-        st.success(f"Result for {name} generated! Click Download below.")
-
-# Download button outside the form to avoid API Exception
-if st.session_state.pdf_data:
+# Download button outside form to prevent StreamlitAPIException
+if st.session_state.generated_pdf:
     st.download_button(
-        label="📥 Download PDF Report Card",
-        data=st.session_state.pdf_data,
-        file_name=st.session_state.file_name,
+        label="📥 Download PDF Result Card",
+        data=st.session_state.generated_pdf,
+        file_name=f"{st.session_state.st_name}_Result.pdf",
         mime="application/pdf"
     )
