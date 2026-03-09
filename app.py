@@ -23,11 +23,8 @@ class PDF(FPDF):
     def header(self):
         self.set_line_width(0.5)
         self.rect(5, 5, 200, 287) 
-        
-        # Logo Logic
         if self.logo_file:
             self.image(self.logo_file, 10, 8, 25)
-            
         self.set_font('Arial', 'B', 10)
         self.cell(0, 5, 'SCHOOL EDUCATION DEPARTMENT', ln=True, align='C')
         self.set_font('Arial', 'B', 16)
@@ -40,7 +37,7 @@ def generate_pdf(data, logo):
     pdf = PDF(logo_file=logo)
     pdf.add_page()
     
-    # Student Info Section
+    # Student Info
     pdf.set_fill_color(112, 128, 144)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font('Arial', 'B', 9)
@@ -68,13 +65,13 @@ def generate_pdf(data, logo):
         pdf.cell(45, 8, str(m[0]), 1, 0, 'C')
         pdf.cell(50, 8, str(m[1]), 1, 1, 'C')
 
-    # Totals Row
+    # Grand Total
     pdf.set_font('Arial', 'B', 10)
     pdf.cell(100, 8, ' GRAND TOTAL', 1)
     pdf.cell(45, 8, str(data['t_total']), 1, 0, 'C')
     pdf.cell(50, 8, str(data['t_obt']), 1, 1, 'C')
     
-    # Metrics
+    # Metrics Box
     pdf.ln(10)
     pdf.set_font('Arial', '', 8)
     cols = ["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]
@@ -83,13 +80,12 @@ def generate_pdf(data, logo):
     pdf.ln(5)
     for v in vals: pdf.cell(46, 8, v, 1, 0, 'C'); pdf.cell(2, 8, "")
 
-    # Quotes
+    # Quotes & Footer
     pdf.ln(25)
     pdf.set_font('Arial', 'I', 9)
     pdf.cell(0, 5, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
     pdf.cell(0, 5, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
 
-    # Footer
     pdf.ln(20)
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(90, 0, '', 'T', 0, 'C')
@@ -103,73 +99,74 @@ def generate_pdf(data, logo):
 
     return pdf.output()
 
-# --- Streamlit Sidebar (Logo Settings) ---
-st.sidebar.title("App Settings")
-logo_upload = st.sidebar.file_uploader("Upload School Logo", type=['png', 'jpg', 'jpeg'])
+# --- Streamlit UI ---
+st.set_page_config(page_title="Result Generator", layout="wide")
+st.sidebar.title("Logo Upload")
+logo_file = st.sidebar.file_uploader("School Logo Select Karein", type=['png', 'jpg', 'jpeg'])
 
-# --- Main UI ---
 st.title("📋 GHS Bhutta Mohabbat - Result System")
 
-# Using session state to avoid API Exception
-if 'pdf_blob' not in st.session_state:
-    st.session_state.pdf_blob = None
+# Session state to avoid download button error
+if 'pdf_ready' not in st.session_state:
+    st.session_state.pdf_ready = None
 
-with st.form("result_input_form"):
+with st.form("main_input_form"):
     c1, c2, c3 = st.columns(3)
-    s_name = c1.text_input("Student Name", "AQIB")
-    f_name = c2.text_input("Father Name", "ALI")
-    roll_no = c3.text_input("Roll No", "15")
+    s_name = c1.text_input("Student Name")
+    f_name = c2.text_input("Father Name")
+    roll = c3.text_input("Roll No")
     
     c4, c5, c6 = st.columns(3)
-    grade_class = c4.text_input("Class", "8")
+    s_class = c4.text_input("Class", "8")
     section = c5.text_input("Section", "A")
-    performance = c6.text_input("Manual Performance", "Excellent")
+    perf = c6.text_input("Performance", "Excellent")
     
-    position = st.text_input("Position", "---")
-    dec_date = st.date_input("Result Declaration Date", datetime.date(2026, 3, 31))
+    pos = st.text_input("Position", "---")
+    res_date = st.date_input("Result Date", datetime.date(2026, 3, 31))
 
-    st.subheader("Select Subjects & Enter Marks")
-    subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
+    st.subheader("Subjects, Selection & Marks")
+    subs_list = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
     marks_map = {}
     
-    cols = st.columns(2)
-    for i, s in enumerate(subs):
-        with cols[i % 2]:
-            st.write(f"**{s}**")
-            active_col, total_col, obt_col = st.columns([1, 2, 2])
-            is_checked = active_col.checkbox("On", value=True, key=f"chk_{s}")
-            if is_checked:
-                # logic for default marks
-                def_t = 75 if s == "Islamiat" else 50
-                t_m = total_col.number_input("Total", value=def_t, key=f"tot_{s}")
-                o_m = obt_col.number_input("Obtained", value=0, key=f"obt_{s}")
-                marks_map[s] = [t_m, o_m]
+    # 2 columns for subjects
+    sc1, sc2 = st.columns(2)
+    for i, s in enumerate(subs_list):
+        target_col = sc1 if i % 2 == 0 else sc2
+        with target_col:
+            st.write(f"--- **{s}** ---")
+            chk, t_m_in, o_m_in = st.columns([1, 2, 2])
+            is_active = chk.checkbox("On", value=True, key=f"is_{s}")
+            if is_active:
+                def_t = 75 if s == "Islamiat" else 50 #
+                t_val = t_m_in.number_input("Total", value=def_t, key=f"t_{s}")
+                o_val = o_m_in.number_input("Obtained", value=0, key=f"o_{s}")
+                marks_map[s] = [t_val, o_val]
 
-    process_btn = st.form_submit_button("Preview & Generate PDF")
+    generate_btn = st.form_submit_button("Generate Report Card")
 
-if process_btn:
-    if not marks_map:
-        st.error("Please select at least one subject.")
-    else:
-        t_grand = sum(v[0] for v in marks_map.values())
-        o_grand = sum(v[1] for v in marks_map.values())
-        percentage = round((o_grand / t_grand) * 100, 1) if t_grand > 0 else 0
+if generate_btn:
+    if marks_map:
+        t_sum = sum(v[0] for v in marks_map.values())
+        o_sum = sum(v[1] for v in marks_map.values())
+        per = round((o_sum / t_sum) * 100, 1) if t_sum > 0 else 0
         
-        final_data = {
-            "name": s_name, "father": f_name, "class": grade_class, "roll": roll_no, 
-            "section": section, "marks": marks_map, "t_total": t_grand, 
-            "t_obt": o_grand, "per": percentage, "grade": get_auto_grade(percentage), 
-            "perf": performance, "pos": position, "date": dec_date.strftime("%d-%m-%Y")
+        final_info = {
+            "name": s_name, "father": f_name, "class": s_class, "roll": roll, 
+            "section": section, "marks": marks_map, "t_total": t_sum, 
+            "t_obt": o_sum, "per": per, "grade": get_auto_grade(per), 
+            "perf": perf, "pos": pos, "date": res_date.strftime("%d-%m-%Y")
         }
-        st.session_state.pdf_blob = generate_pdf(final_data, logo_upload)
-        st.session_state.filename = f"{s_name}_Result.pdf"
-        st.success(f"Result for {s_name} processed! Click download button below.")
+        st.session_state.pdf_ready = generate_pdf(final_info, logo_file)
+        st.session_state.student_name = s_name
+        st.success(f"Result for {s_name} processed! Download below.")
+    else:
+        st.error("Kam az kam ek subject select karein.")
 
-# Final Download Button outside the Form
-if st.session_state.pdf_blob:
+# Download Button Completely Outside Form to fix StreamlitAPIException
+if st.session_state.pdf_ready:
     st.download_button(
-        label="📥 Download PDF Report Card",
-        data=st.session_state.pdf_blob,
-        file_name=st.session_state.filename,
+        label="📥 Download PDF Result Card",
+        data=st.session_state.pdf_ready,
+        file_name=f"{st.session_state.student_name}_Result.pdf",
         mime="application/pdf"
     )
