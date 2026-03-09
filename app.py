@@ -4,7 +4,7 @@ import datetime
 from PIL import Image
 import io
 
-# --- School Branding Data ---
+# --- School Details ---
 SCHOOL_NAME = "GOVT. HIGH SCHOOL BHUTTA MOHABBAT"
 EMIS_CODE = "39310025 | DISTRICT OKARA"
 HEADMASTER = "SAFDAR JAVED"
@@ -23,17 +23,13 @@ class PDF(FPDF):
         self.logo_image = logo_image
 
     def header(self):
-        # Result Card Border
         self.set_line_width(0.5)
         self.rect(5, 5, 200, 287) 
-        
-        # Logo Logic
         if self.logo_image:
-            img_buffer = io.BytesIO()
-            self.logo_image.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
-            self.image(img_buffer, 10, 8, 25)
-            
+            img_buf = io.BytesIO()
+            self.logo_image.save(img_buf, format='PNG')
+            img_buf.seek(0)
+            self.image(img_buf, 10, 8, 25)
         self.set_font('Arial', 'B', 10)
         self.cell(0, 5, 'SCHOOL EDUCATION DEPARTMENT', ln=True, align='C')
         self.set_font('Arial', 'B', 16)
@@ -45,8 +41,6 @@ class PDF(FPDF):
 def generate_pdf(data, logo):
     pdf = PDF(logo_image=logo)
     pdf.add_page()
-    
-    # Student Info Section
     pdf.set_fill_color(112, 128, 144)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font('Arial', 'B', 9)
@@ -61,7 +55,6 @@ def generate_pdf(data, logo):
     pdf.cell(95, 8, f" SECTION: {data['section']}", fill=True, ln=True)
     pdf.ln(10)
 
-    # Table Header
     pdf.set_fill_color(50, 50, 50)
     pdf.cell(100, 8, ' SUBJECT', 1, 0, 'L', True)
     pdf.cell(45, 8, ' TOTAL MARKS', 1, 0, 'C', True)
@@ -74,13 +67,11 @@ def generate_pdf(data, logo):
         pdf.cell(45, 8, str(m[0]), 1, 0, 'C')
         pdf.cell(50, 8, str(m[1]), 1, 1, 'C')
 
-    # Grand Total
     pdf.set_font('Arial', 'B', 10)
     pdf.cell(100, 8, ' GRAND TOTAL', 1)
     pdf.cell(45, 8, str(data['t_total']), 1, 0, 'C')
     pdf.cell(50, 8, str(data['t_obt']), 1, 1, 'C')
     
-    # Bottom Metrics
     pdf.ln(10)
     pdf.set_font('Arial', '', 8)
     cols = ["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]
@@ -89,13 +80,11 @@ def generate_pdf(data, logo):
     pdf.ln(5)
     for v in vals: pdf.cell(46, 8, v, 1, 0, 'C'); pdf.cell(2, 8, "")
 
-    # Educational Quotes
     pdf.ln(25)
     pdf.set_font('Arial', 'I', 9)
     pdf.cell(0, 5, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
     pdf.cell(0, 5, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
 
-    # Signatures
     pdf.ln(20)
     pdf.set_font('Arial', 'B', 9)
     pdf.cell(90, 0, '', 'T', 0, 'C')
@@ -109,83 +98,76 @@ def generate_pdf(data, logo):
 
     return pdf.output()
 
-# --- Streamlit Frontend ---
-st.set_page_config(page_title="GHS Bhutta Result App", layout="wide")
+# --- Streamlit Logic ---
+st.set_page_config(page_title="Result App", layout="wide")
 
-# Persistent State
 if 'pdf_blob' not in st.session_state:
     st.session_state.pdf_blob = None
-if 'student_name' not in st.session_state:
-    st.session_state.student_name = ""
+if 'st_name' not in st.session_state:
+    st.session_state.st_name = ""
 
-# Sidebar for Logo
 st.sidebar.title("App Settings")
-logo_upload = st.sidebar.file_uploader("Upload School Logo", type=['png', 'jpg', 'jpeg'])
-logo_image = Image.open(logo_upload) if logo_upload else None
+logo_upload = st.sidebar.file_uploader("Upload Logo", type=['png', 'jpg', 'jpeg'])
+logo_img = Image.open(logo_upload) if logo_upload else None
 
-st.title("📋 GHS Bhutta Mohabbat - Result Management System")
+st.title("📋 GHS Bhutta Mohabbat - Result System")
 
-with st.form("master_input_form"):
+with st.form("main_form"):
     c1, c2, c3 = st.columns(3)
-    s_name = c1.text_input("Student Name", "AQIB")
-    f_name = c2.text_input("Father Name", "ALI")
-    roll_no = c3.text_input("Roll No", "15")
+    name = c1.text_input("Student Name", "AQIB")
+    father = c2.text_input("Father Name", "ALI")
+    roll = c3.text_input("Roll No", "15")
     
     c4, c5, c6 = st.columns(3)
-    grade_class = c4.text_input("Class", "8")
+    s_class = c4.text_input("Class", "8")
     section = c5.text_input("Section", "A")
-    performance = c6.text_input("Manual Performance", "Excellent")
+    perf = c6.text_input("Manual Performance", "Excellent")
     
-    position = st.text_input("Position", "---")
-    res_date = st.date_input("Result Declaration Date", datetime.date(2026, 3, 31))
+    pos = st.text_input("Position", "---")
+    res_date = st.date_input("Declaration Date", datetime.date(2026, 3, 31))
 
-    st.subheader("Select Subjects & Edit Marks")
-    subs_list = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
+    st.subheader("Subjects & Marks (Editable Total)")
+    subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
     marks_map = {}
     
-    # 2-column grid for subjects
     sc1, sc2 = st.columns(2)
-    for i, s in enumerate(subs_list):
-        current_col = sc1 if i % 2 == 0 else sc2
-        with current_col:
+    for i, s in enumerate(subs):
+        col = sc1 if i % 2 == 0 else sc2
+        with col:
             st.write(f"**{s}**")
-            cb, tm_col, om_col = st.columns([1, 2, 2])
-            is_checked = cb.checkbox("On", value=True, key=f"is_{s}")
-            if is_checked:
-                # Default total marks logic
-                def_tm = 75 if s == "Islamiat" else 50
-                tm_val = tm_col.number_input("Total Marks", value=def_tm, key=f"t_{s}")
-                om_val = om_col.number_input("Obtained", value=0, key=f"o_{s}")
-                marks_map[s] = [tm_val, om_val]
+            chk, t_col, o_col = st.columns([1, 2, 2])
+            on = chk.checkbox("On", value=True, key=f"c_{s}")
+            if on:
+                def_t = 75 if s == "Islamiat" else 50
+                t_val = t_col.number_input("Total Marks", value=def_t, key=f"tm_{s}")
+                o_val = o_col.number_input("Obtained", value=0, key=f"om_{s}")
+                marks_map[s] = [t_val, o_val]
 
-    # Form Submit
-    process_trigger = st.form_submit_button("Generate Result Card")
+    submitted = st.form_submit_button("Generate Result Data")
 
-# Logic after form submission (OUTSIDE THE FORM)
-if process_trigger:
+if submitted:
     if marks_map:
-        t_grand = sum(v[0] for v in marks_map.values())
-        o_grand = sum(v[1] for v in marks_map.values())
-        percentage = round((o_grand / t_grand) * 100, 1) if t_grand > 0 else 0
+        t_sum = sum(v[0] for v in marks_map.values())
+        o_sum = sum(v[1] for v in marks_map.values())
+        per = round((o_sum / t_sum) * 100, 1) if t_sum > 0 else 0
         
-        final_payload = {
-            "name": s_name, "father": f_name, "class": grade_class, "roll": roll_no, 
-            "section": section, "marks": marks_map, "t_total": t_grand, 
-            "t_obt": o_grand, "per": percentage, "grade": get_auto_grade(percentage), 
-            "perf": performance, "pos": position, "date": res_date.strftime("%d-%m-%Y")
+        final_info = {
+            "name": name, "father": father, "class": s_class, "roll": roll, 
+            "section": section, "marks": marks_map, "t_total": t_sum, 
+            "t_obt": o_sum, "per": per, "grade": get_auto_grade(per), 
+            "perf": perf, "pos": pos, "date": res_date.strftime("%d-%m-%Y")
         }
-        
-        st.session_state.pdf_blob = generate_pdf(final_payload, logo_image)
-        st.session_state.student_name = s_name
-        st.success(f"Result for {s_name} is ready! Grade: {get_auto_grade(percentage)}")
+        st.session_state.pdf_blob = generate_pdf(final_info, logo_img)
+        st.session_state.st_name = name
+        st.success(f"{name} ka result generate ho gaya hai! Niche se download karein.")
     else:
         st.error("Please select at least one subject.")
 
-# Final Download Button (Permanently Fixed Outside Form)
+# Error Fix: Download button outside form using session state
 if st.session_state.pdf_blob:
     st.download_button(
         label="📥 Download PDF Result Card",
         data=st.session_state.pdf_blob,
-        file_name=f"{st.session_state.student_name}_Result.pdf",
+        file_name=f"{st.session_state.st_name}_Result.pdf",
         mime="application/pdf"
     )
