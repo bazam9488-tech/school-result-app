@@ -1,41 +1,47 @@
 import streamlit as st
+import pandas as pd
 from fpdf import FPDF
-import datetime
-from PIL import Image
+import sqlite3
+import plotly.express as px
 import io
 
-# --- School Branding ---
-SCHOOL_NAME = "GOVT. HIGH SCHOOL BHUTTA MOHABBAT"
-EMIS_CODE = "39310025 | DISTRICT OKARA"
-HEADMASTER = "SAFDAR JAVED"
+# --- Configuration & Branding ---
+SCHOOL_NAME = "GOVT. HIGH SCHOOL BHUTTA MOHABBAT" #
+EMIS_CODE = "39310025 | DISTRICT OKARA" #
+HEADMASTER = "SAFDAR JAVED" #
 
-def calculate_grade(per):
-    """Automatic Grading Logic"""
-    if per >= 80: return "A+"
-    elif per >= 70: return "A"
-    elif per >= 60: return "B"
-    elif per >= 50: return "C"
-    elif per >= 40: return "D"
-    else: return "F"
+# --- Database Functions ---
+def init_db():
+    conn = sqlite3.connect('ghs_bhutta.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT, father TEXT, class TEXT, roll TEXT, section TEXT,
+                    english INTEGER, urdu INTEGER, math INTEGER, islamiat INTEGER,
+                    science INTEGER, s_study INTEGER, computer INTEGER, quran INTEGER,
+                    total_obt INTEGER, percentage REAL, grade TEXT)''')
+    conn.commit()
+    conn.close()
 
-class ReportPDF(FPDF):
-    def __init__(self, logo_img=None):
-        super().__init__()
-        self.logo_img = logo_img
+def save_record(d):
+    conn = sqlite3.connect('ghs_bhutta.db')
+    df = pd.DataFrame([d])
+    df.to_sql('results', conn, if_exists='append', index=False)
+    conn.close()
 
+# --- Logic: Grading & Positions ---
+def get_grade(per):
+    if per >= 80: return "A+", "Excellent"
+    if per >= 70: return "A", "Very Good"
+    if per >= 60: return "B", "Good"
+    if per >= 50: return "C", "Satisfactory"
+    return "F", "Poor"
+
+# --- PDF Engine ---
+class PDF(FPDF):
     def header(self):
-        # Border
-        self.set_line_width(0.5)
         self.rect(5, 5, 200, 287)
-        
-        # Logo Logic
-        if self.logo_img:
-            buf = io.BytesIO()
-            self.logo_img.save(buf, format='PNG')
-            buf.seek(0)
-            self.image(buf, 10, 8, 25)
-            
-        self.set_font('Arial', 'B', 10)
+        self.set_font('Arial', 'B', 11)
         self.cell(0, 5, 'SCHOOL EDUCATION DEPARTMENT', ln=True, align='C')
         self.set_font('Arial', 'B', 16)
         self.cell(0, 10, SCHOOL_NAME, ln=True, align='C')
@@ -43,158 +49,156 @@ class ReportPDF(FPDF):
         self.cell(0, 5, f'EMIS CODE: {EMIS_CODE}', ln=True, align='C')
         self.ln(10)
 
-def generate_pdf_blob(data, logo):
-    pdf = ReportPDF(logo_img=logo)
+def generate_pdf(row, pos):
+    pdf = PDF()
     pdf.add_page()
     
-    # Student Info
-    pdf.set_fill_color(112, 128, 144) # Slate Gray
+    # Student Info Header
+    pdf.set_fill_color(112, 128, 144)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(90, 8, f" NAME: {data['name'].upper()}", fill=True)
+    pdf.set_font('Arial', 'B', 10)
+    pdf.cell(90, 8, f" NAME: {row['name'].upper()}", fill=True)
     pdf.cell(10, 8, "")
-    pdf.cell(95, 8, f" FATHER NAME: {data['father'].upper()}", fill=True, ln=True)
+    pdf.cell(95, 8, f" FATHER NAME: {row['father'].upper()}", fill=True, ln=True)
     pdf.ln(2)
-    pdf.cell(45, 8, f" CLASS: {data['class']}", fill=True)
+    pdf.cell(45, 8, f" CLASS: {row['class']}", fill=True)
     pdf.cell(5, 8, "")
-    pdf.cell(45, 8, f" ROLL NO: {data['roll']}", fill=True)
+    pdf.cell(45, 8, f" ROLL NO: {row['roll']}", fill=True)
     pdf.cell(5, 8, "")
-    pdf.cell(95, 8, f" SECTION: {data['section']}", fill=True, ln=True)
+    pdf.cell(95, 8, f" SECTION: {row['section']}", fill=True, ln=True)
     pdf.ln(10)
 
-    # Marks Table Header
+    # Table Header
     pdf.set_fill_color(50, 50, 50)
     pdf.cell(100, 8, ' SUBJECT', 1, 0, 'L', True)
     pdf.cell(45, 8, ' TOTAL MARKS', 1, 0, 'C', True)
     pdf.cell(50, 8, ' OBTAINED', 1, 1, 'C', True)
 
-    # Table Body
+    # Subject Data
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 10)
-    for sub, m in data['marks'].items():
-        pdf.cell(100, 8, f" {sub}", 1)
+    subs = {
+        "English": [50, row['english']], "Urdu": [50, row['urdu']], 
+        "Mathematics": [50, row['math']], "Islamiat": [75, row['islamiat']],
+        "Science": [50, row['science']], "Social Study": [50, row['s_study']],
+        "Computer": [50, row['computer']], "Tarjuma-tu-Quran": [50, row['quran']]
+    }
+    
+    for s, m in subs.items():
+        pdf.cell(100, 8, f" {s}", 1)
         pdf.cell(45, 8, str(m[0]), 1, 0, 'C')
         pdf.cell(50, 8, str(m[1]), 1, 1, 'C')
 
-    # Grand Totals
+    # Totals
     pdf.set_font('Arial', 'B', 10)
     pdf.cell(100, 8, ' GRAND TOTAL', 1)
-    pdf.cell(45, 8, str(data['grand_total']), 1, 0, 'C')
-    pdf.cell(50, 8, str(data['grand_obtained']), 1, 1, 'C')
+    pdf.cell(45, 8, '425', 1, 0, 'C')
+    pdf.cell(50, 8, str(row['total_obt']), 1, 1, 'C')
     
-    # Bottom Stats
+    # Metrics
     pdf.ln(10)
+    grade, perf = get_grade(row['percentage'])
     pdf.set_font('Arial', '', 8)
-    pdf.cell(48, 5, "PERCENTAGE:", 0, 0)
-    pdf.cell(48, 5, "POSITION:", 0, 0)
-    pdf.cell(48, 5, "PERFORMANCE:", 0, 0)
-    pdf.cell(48, 5, "FINAL GRADE:", 0, 1)
-    
-    pdf.set_font('Arial', 'B', 10)
-    pdf.cell(46, 8, f"{data['percentage']}%", 1, 0, 'C')
-    pdf.cell(2, 8, "")
-    pdf.cell(46, 8, data['position'], 1, 0, 'C')
-    pdf.cell(2, 8, "")
-    pdf.cell(46, 8, data['performance'], 1, 0, 'C')
-    pdf.cell(2, 8, "")
-    pdf.cell(46, 8, data['grade'], 1, 1, 'C')
+    cols = ["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]
+    vals = [f"{row['percentage']}%", str(pos), perf, grade]
+    for c in cols: pdf.cell(48, 5, c, 0, 0, 'L')
+    pdf.ln(5)
+    for v in vals: pdf.cell(46, 8, v, 1, 0, 'C'); pdf.cell(2, 8, "")
 
-    # Quotes
-    pdf.ln(25)
-    pdf.set_font('Arial', 'I', 9)
-    pdf.cell(0, 5, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
-    pdf.cell(0, 5, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
-
-    # Footer Signatures
-    pdf.ln(20)
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(90, 0, '', 'T', 0)
+    # Signatures
+    pdf.ln(30)
+    pdf.cell(90, 0, '', 'T', 0, 'C')
     pdf.cell(20, 0, '')
-    pdf.cell(85, 0, '', 'T', 1)
+    pdf.cell(85, 0, '', 'T', 1, 'C')
     pdf.cell(90, 10, 'CLASS TEACHER', 0, 0, 'C')
     pdf.cell(105, 10, f'SENIOR HEAD MASTER ({HEADMASTER})', 0, 1, 'R')
-    
-    pdf.set_font('Arial', '', 7)
-    pdf.cell(0, 10, f"Result Declaration Date: {data['date']}", ln=True, align='R')
 
     return pdf.output()
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Result System GHS Bhutta", layout="wide")
+# --- Streamlit UI ---
+st.set_page_config(page_title="GHS Master System", layout="wide")
+init_db()
 
-# Persistent State Initialization
-if 'pdf_ready' not in st.session_state:
-    st.session_state.pdf_ready = None
-if 'file_name' not in st.session_state:
-    st.session_state.file_name = "Result.pdf"
+# Simple Security
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-# Sidebar
-st.sidebar.header("School Settings")
-uploaded_logo = st.sidebar.file_uploader("Upload Logo", type=['png', 'jpg', 'jpeg'])
-logo_pil = Image.open(uploaded_logo) if uploaded_logo else None
+if not st.session_state.authenticated:
+    pw = st.sidebar.text_input("Enter Teacher Password", type="password")
+    if st.sidebar.button("Login"):
+        if pw == "ghs123": # Placeholder password
+            st.session_state.authenticated = True
+            st.rerun()
+        else: st.error("Wrong Password")
+    st.stop()
 
-st.title("📋 GHS Bhutta Mohabbat - Result System")
+# Main App Tabs
+tab1, tab2, tab3, tab4 = st.tabs(["➕ Single Entry", "📊 Bulk Upload", "📜 Records & Positions", "📈 Analytics"])
 
-# The Form
-with st.form("main_result_form"):
-    c1, c2, c3 = st.columns(3)
-    name = c1.text_input("Student Name", "AQIB")
-    father = c2.text_input("Father Name", "ALI")
-    roll = c3.text_input("Roll No", "15")
-    
-    c4, c5, c6 = st.columns(3)
-    s_class = c4.text_input("Class", "8")
-    section = c5.text_input("Section", "A")
-    performance = c6.text_input("Performance (Manual)", "Excellent")
-    
-    position = st.text_input("Position", "---")
-    res_date = st.date_input("Declaration Date", datetime.date(2026, 3, 31))
-
-    st.subheader("Subjects, Selection & Marks Entry")
-    subjects_list = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
-    
-    final_marks = {}
-    cols = st.columns(2)
-    for i, s in enumerate(subjects_list):
-        with cols[i % 2]:
-            st.write(f"--- **{s}** ---")
-            chk, t_col, o_col = st.columns([1, 2, 2])
-            is_active = chk.checkbox("On", value=True, key=f"active_{s}")
-            if is_active:
-                def_total = 75 if s == "Islamiat" else 50 #
-                tm = t_col.number_input("Total", value=def_total, key=f"tm_{s}")
-                om = o_col.number_input("Obtained", value=0, key=f"om_{s}")
-                final_marks[s] = [tm, om]
-
-    generate_btn = st.form_submit_button("Step 1: Process Result")
-
-# Logic after form submit
-if generate_btn:
-    if final_marks:
-        total_sum = sum(v[0] for v in final_marks.values())
-        obtained_sum = sum(v[1] for v in final_marks.values())
-        percent = round((obtained_sum / total_sum) * 100, 1) if total_sum > 0 else 0
-        auto_grade = calculate_grade(percent)
+with tab1:
+    with st.form("single_form"):
+        c1, c2, c3 = st.columns(3)
+        name = c1.text_input("Student Name")
+        father = c2.text_input("Father Name")
+        roll = c3.text_input("Roll No")
         
-        payload = {
-            "name": name, "father": father, "class": s_class, "roll": roll, 
-            "section": section, "marks": final_marks, "grand_total": total_sum, 
-            "grand_obtained": obtained_sum, "percentage": percent, 
-            "grade": auto_grade, "performance": performance, "position": position,
-            "date": res_date.strftime("%d-%m-%Y")
-        }
+        st.write("### Marks Entry")
+        m_cols = st.columns(4)
+        m_vals = {}
+        subjects = ["English", "Urdu", "Math", "Islamiat", "Science", "S_Study", "Computer", "Quran"]
+        for i, s in enumerate(subjects):
+            with m_cols[i % 4]:
+                m_vals[s.lower()] = st.number_input(s, min_value=0, max_value=100, step=1)
         
-        st.session_state.pdf_ready = generate_pdf_blob(payload, logo_pil)
-        st.session_state.file_name = f"{name}_Result.pdf"
-        st.success(f"Result Processed for {name}! Now click Download below.")
-    else:
-        st.error("Select at least one subject!")
+        if st.form_submit_button("Save Student"):
+            total_obt = sum(m_vals.values())
+            per = round((total_obt / 425) * 100, 2)
+            grd, _ = get_grade(per)
+            data = {**{"name":name, "father":father, "class":"8", "roll":roll, "section":"A", "year":"2025-26", 
+                      "total_obt":total_obt, "percentage":per, "grade":grd}, **m_vals}
+            save_record(data)
+            st.success("Record Saved!")
 
-# DOWNLOAD BUTTON (ALWAYS OUTSIDE FORM)
-if st.session_state.pdf_ready:
-    st.download_button(
-        label="📥 Step 2: Download PDF Report Card",
-        data=st.session_state.pdf_ready,
-        file_name=st.session_state.file_name,
-        mime="application/pdf"
-    )
+with tab2:
+    st.info("Download the template, fill it, and upload back.")
+    template = pd.DataFrame(columns=["name", "father", "roll", "section", "english", "urdu", "math", "islamiat", "science", "s_study", "computer", "quran"])
+    st.download_button("Download Excel Template", template.to_csv(index=False), "template.csv")
+    
+    uploaded_file = st.file_uploader("Upload Filled Excel/CSV", type=['csv', 'xlsx'])
+    if uploaded_file:
+        up_df = pd.read_csv(uploaded_file)
+        if st.button("Process Bulk Upload"):
+            conn = sqlite3.connect('ghs_bhutta.db')
+            for _, r in up_df.iterrows():
+                t_obt = r['english']+r['urdu']+r['math']+r['islamiat']+r['science']+r['s_study']+r['computer']+r['quran']
+                per = round((t_obt/425)*100, 2)
+                grd, _ = get_grade(per)
+                # Save each
+                c = conn.cursor()
+                c.execute("INSERT INTO results (name, father, class, roll, section, english, urdu, math, islamiat, science, s_study, computer, quran, total_obt, percentage, grade) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          (r['name'], r['father'], "8", r['roll'], r['section'], r['english'], r['urdu'], r['math'], r['islamiat'], r['science'], r['s_study'], r['computer'], r['quran'], t_obt, per, grd))
+            conn.commit()
+            conn.close()
+            st.success("All records uploaded successfully!")
+
+with tab3:
+    conn = sqlite3.connect('ghs_bhutta.db')
+    df_all = pd.read_sql("SELECT * FROM results", conn)
+    if not df_all.empty:
+        # Calculate Positions
+        df_all['position'] = df_all['total_obt'].rank(ascending=False, method='min').astype(int)
+        st.dataframe(df_all[['position', 'roll', 'name', 'total_obt', 'percentage', 'grade']], use_container_width=True)
+        
+        st.divider()
+        search_roll = st.text_input("Enter Roll No to Generate PDF")
+        if search_roll:
+            student = df_all[df_all['roll'] == search_roll]
+            if not student.empty:
+                s_row = student.iloc[0]
+                pdf_file = generate_pdf(s_row, s_row['position'])
+                st.download_button(f"Download PDF for {s_row['name']}", pdf_file, f"{s_row['name']}_Result.pdf")
+    conn.close()
+
+with tab4:
+    if not df_all.empty:
+        fig = px.bar(df_all, x="name", y="percentage", color="grade", title="Class Performance Overview")
+        st.plotly_chart(fig, use_container_width=True)
