@@ -1,3 +1,5 @@
 streamlit
 fpdf2
-Pillow
+pandas
+plotly
+openpyxl
