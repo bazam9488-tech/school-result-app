@@ -1,195 +1,174 @@
 import streamlit as st
-from fpdf import FPDF
-import datetime
-from PIL import Image
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
 import io
+import datetime
 
-# --- School Branding Data ---
-SCHOOL_NAME = "GOVT. HIGH SCHOOL BHUTTA MOHABBAT"
-EMIS_CODE = "39310025 | DISTRICT OKARA"
-HEADMASTER = "SAFDAR JAVED"
+# --- CONFIGURATION ---
+st.set_page_config(page_title="PDF Result Card Generator", layout="centered")
 
-def get_auto_grade(per):
-    """Percentage ke mutabiq automatic grade nikalne ka logic"""
-    if per >= 80: return "A+"
-    elif per >= 70: return "A"
-    elif per >= 60: return "B"
-    elif per >= 50: return "C"
-    elif per >= 40: return "D"
-    else: return "F"
+def get_grade(percentage):
+    """Enhanced grading scale."""
+    if percentage >= 90: return "A+"
+    elif percentage >= 80: return "A"
+    elif percentage >= 70: return "B"
+    elif percentage >= 60: return "C"
+    elif percentage >= 50: return "D"
+    else: return "F (Fail)"
 
-class PDF(FPDF):
-    def __init__(self, logo_image=None):
-        super().__init__()
-        self.logo_image = logo_image
+def generate_pdf(data):
+    """
+    Generates a professional PDF result card.
+    """
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
 
-    def header(self):
-        # Result Card ka Border
-        self.set_line_width(0.5)
-        self.rect(5, 5, 200, 287) 
+    # 1. Page Border
+    p.setStrokeColor(colors.black)
+    p.rect(20, 20, width - 40, height - 40, stroke=1, fill=0)
+
+    # 2. Header Section
+    p.setFillColor(colors.HexColor("#1F497D")) # Professional Dark Blue
+    p.rect(20, height - 120, width - 40, 100, fill=1)
+    
+    p.setFillColor(colors.white)
+    p.setFont("Helvetica-Bold", 24)
+    p.drawCentredString(width / 2, height - 60, data['school_name'].upper())
+    
+    p.setFont("Helvetica", 14)
+    p.drawCentredString(width / 2, height - 90, "ANNUAL PROGRESS REPORT - 2026")
+
+    # 3. Student Information
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica-Bold", 12)
+    
+    curr_y = height - 160
+    p.drawString(50, curr_y, f"Student Name: {data['name']}")
+    p.drawString(350, curr_y, f"Class: {data['class']}")
+    
+    curr_y -= 25
+    p.drawString(50, curr_y, f"Roll Number: {data['roll']}")
+    p.drawString(350, curr_y, f"Date: {datetime.date.today().strftime('%B %d, %s')}")
+
+    # 4. Marks Table
+    table_data = [["Subject", "Maximum Marks", "Obtained Marks", "Grade"]]
+    for sub, marks in data['subjects'].items():
+        table_data.append([sub, "100", str(marks), get_grade(marks)])
+
+    # Table Styling
+    table = Table(table_data, colWidths=[200, 100, 100, 100])
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#D3D3D3")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ])
+    table.setStyle(style)
+    
+    # Calculate table position
+    table_width, table_height = table.wrap(0, 0)
+    table.drawOn(p, 50, curr_y - table_height - 30)
+
+    # 5. Result Summary
+    summary_y = curr_y - table_height - 80
+    total_marks = sum(data['subjects'].values())
+    max_total = len(data['subjects']) * 100
+    percentage = (total_marks / max_total) * 100
+    
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, summary_y, f"Total Marks: {total_marks} / {max_total}")
+    p.drawString(50, summary_y - 20, f"Percentage: {percentage:.2f}%")
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(50, summary_y - 45, f"Final Result: {'PASSED' if percentage >= 40 else 'FAILED'}")
+
+    # 6. Teacher Comments Section
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(50, summary_y - 90, "Teacher's Remarks:")
+    p.setFont("Helvetica-Oblique", 11)
+    
+    # Box for comments
+    p.rect(50, summary_y - 160, width - 100, 60)
+    p.drawString(60, summary_y - 110, data['comments'])
+
+    # 7. Footer / Signatures
+    # Bottom Left: Class Teacher
+    p.line(50, 70, 200, 70)
+    p.setFont("Helvetica", 10)
+    p.drawString(75, 55, "Class Teacher")
+
+    # Bottom Right: Senior Headmaster
+    p.line(width - 200, 70, width - 50, 70)
+    p.setFont("Helvetica-Bold", 10)
+    p.drawRightString(width - 50, 55, "Safdar Javed")
+    p.setFont("Helvetica", 9)
+    p.drawRightString(width - 50, 42, "Senior Headmaster")
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+    return buffer
+
+# --- STREAMLIT UI ---
+def main():
+    st.title("📄 PDF School Result Generator")
+    st.info("Generates a formal A4 PDF report with automated grading and signatures.")
+
+    with st.sidebar:
+        st.header("School Details")
+        school_name = st.text_input("School Name", "Government High School Bhutta Mohabbat")
         
-        # Logo Logic (Sidebar se upload hone wala logo)
-        if self.logo_image:
-            img_buffer = io.BytesIO()
-            self.logo_image.save(img_buffer, format='PNG')
-            img_buffer.seek(0)
-            self.image(img_buffer, 10, 8, 25)
+        st.header("Subjects Configuration")
+        subject_input = st.text_area("List Subjects (one per line)", 
+                                     "English\nMathematics\nPhysics\nChemistry\nUrdu\nComputer Science")
+        subjects = [s.strip() for s in subject_input.split('\n') if s.strip()]
+
+    # Student Data Input
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("Student Name", placeholder="e.g. Ali Ahmed")
+        roll = st.text_input("Roll Number", placeholder="e.g. 1025")
+    with col2:
+        student_class = st.text_input("Class", placeholder="e.g. 10th-A")
+        
+    st.subheader("Marks Entry")
+    marks_data = {}
+    m_cols = st.columns(3)
+    for i, sub in enumerate(subjects):
+        with m_cols[i % 3]:
+            marks_data[sub] = st.number_input(f"{sub}", 0, 100, 50, key=sub)
+
+    comments = st.text_area("Teacher's Remarks", "Excellent performance and hard-working student.")
+
+    if st.button("Generate & Preview PDF", type="primary"):
+        if not name or not roll:
+            st.warning("Please fill in the Student Name and Roll Number.")
+        else:
+            data_payload = {
+                "school_name": school_name,
+                "name": name,
+                "roll": roll,
+                "class": student_class,
+                "subjects": marks_data,
+                "comments": comments
+            }
             
-        self.set_font('Arial', 'B', 10)
-        self.cell(0, 5, 'SCHOOL EDUCATION DEPARTMENT', ln=True, align='C')
-        self.set_font('Arial', 'B', 16)
-        self.cell(0, 10, SCHOOL_NAME, ln=True, align='C')
-        self.set_font('Arial', '', 10)
-        self.cell(0, 5, f'EMIS CODE: {EMIS_CODE}', ln=True, align='C')
-        self.ln(10)
+            pdf_bytes = generate_pdf(data_payload)
+            
+            # Download Button
+            st.success("PDF Generated Successfully!")
+            st.download_button(
+                label="📥 Download Result Card (PDF)",
+                data=pdf_bytes,
+                file_name=f"Result_{name}_{roll}.pdf",
+                mime="application/pdf"
+            )
 
-def generate_pdf(data, logo):
-    pdf = PDF(logo_image=logo)
-    pdf.add_page()
-    
-    # Student Details Section (Slate Gray Bars)
-    pdf.set_fill_color(112, 128, 144)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(90, 8, f" NAME: {data['name'].upper()}", fill=True)
-    pdf.cell(10, 8, "")
-    pdf.cell(95, 8, f" FATHER NAME: {data['father'].upper()}", fill=True, ln=True)
-    pdf.ln(2)
-    pdf.cell(45, 8, f" CLASS: {data['class']}", fill=True)
-    pdf.cell(5, 8, "")
-    pdf.cell(45, 8, f" ROLL NO: {data['roll']}", fill=True)
-    pdf.cell(10, 8, "")
-    pdf.cell(90, 8, f" SECTION: {data['section']}", fill=True, ln=True)
-    pdf.ln(10)
-
-    # Marks Table Header
-    pdf.set_fill_color(50, 50, 50)
-    pdf.cell(100, 8, ' SUBJECT', 1, 0, 'L', True)
-    pdf.cell(45, 8, ' TOTAL MARKS', 1, 0, 'C', True)
-    pdf.cell(50, 8, ' OBTAINED', 1, 1, 'C', True)
-
-    # Subject Rows
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_font('Arial', '', 10)
-    for s, m in data['marks'].items():
-        pdf.cell(100, 8, f" {s}", 1)
-        pdf.cell(45, 8, str(m[0]), 1, 0, 'C')
-        pdf.cell(50, 8, str(m[1]), 1, 1, 'C')
-
-    # Grand Totals
-    pdf.set_font('Arial', 'B', 10)
-    pdf.cell(100, 8, ' GRAND TOTAL', 1)
-    pdf.cell(45, 8, str(data['t_total']), 1, 0, 'C')
-    pdf.cell(50, 8, str(data['t_obt']), 1, 1, 'C')
-    
-    # Grading & Performance Boxes
-    pdf.ln(10)
-    pdf.set_font('Arial', '', 8)
-    cols = ["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]
-    vals = [f"{data['per']}%", data['pos'], data['perf'], data['grade']]
-    for c in cols: pdf.cell(48, 5, c, 0, 0, 'L')
-    pdf.ln(5)
-    for v in vals: pdf.cell(46, 8, v, 1, 0, 'C'); pdf.cell(2, 8, "")
-
-    # Educational Quotes
-    pdf.ln(25)
-    pdf.set_font('Arial', 'I', 9)
-    pdf.cell(0, 5, '"Education is the most powerful weapon which you can use to change the world."', ln=True, align='C')
-    pdf.cell(0, 5, '"The roots of education are bitter, but the fruit is sweet."', ln=True, align='C')
-
-    # Signatures
-    pdf.ln(20)
-    pdf.set_font('Arial', 'B', 9)
-    pdf.cell(90, 0, '', 'T', 0)
-    pdf.cell(20, 0, '')
-    pdf.cell(85, 0, '', 'T', 1)
-    pdf.cell(90, 10, 'CLASS TEACHER', 0, 0, 'C')
-    pdf.cell(105, 10, f'SENIOR HEAD MASTER ({HEADMASTER})', 0, 1, 'R')
-    
-    pdf.set_font('Arial', '', 7)
-    pdf.cell(0, 10, f"Result Declaration Date: {data['date']}", ln=True, align='R')
-
-    return pdf.output()
-
-# --- Streamlit Frontend ---
-st.set_page_config(page_title="GHS Result Generator", layout="wide")
-
-# Persistent data storage (Download error fix)
-if 'pdf_blob' not in st.session_state:
-    st.session_state.pdf_blob = None
-if 'file_name' not in st.session_state:
-    st.session_state.file_name = ""
-
-# Sidebar settings
-st.sidebar.title("App Settings")
-logo_upload = st.sidebar.file_uploader("Upload School Logo", type=['png', 'jpg', 'jpeg'])
-logo_image = Image.open(logo_upload) if logo_upload else None
-
-st.title("📋 GHS Bhutta Mohabbat - Result System")
-
-with st.form("input_form"):
-    # Student Personal Details
-    c1, c2, c3 = st.columns(3)
-    name = c1.text_input("Student Name", "AQIB")
-    father = c2.text_input("Father Name", "ALI")
-    roll = c3.text_input("Roll No", "15")
-    
-    c4, c5, c6 = st.columns(3)
-    s_class = c4.text_input("Class", "8")
-    section = c5.text_input("Section", "A")
-    performance = c6.text_input("Performance (Manual Remarks)", "Excellent")
-    
-    position = st.text_input("Position (e.g. 1st, 2nd, ---)", "---")
-    res_date = st.date_input("Declaration Date", datetime.date(2026, 3, 31))
-
-    st.divider()
-    st.subheader("Select Subjects & Edit Marks")
-    
-    all_subjects = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
-    selected_marks = {}
-    
-    # 2-column layout for subjects
-    sc1, sc2 = st.columns(2)
-    for i, s in enumerate(all_subjects):
-        with (sc1 if i % 2 == 0 else sc2):
-            st.write(f"**{s}**")
-            chk, t_col, o_col = st.columns([1, 2, 2])
-            is_active = chk.checkbox("On", value=True, key=f"active_{s}")
-            if is_active:
-                def_total = 75 if s == "Islamiat" else 50
-                tm = t_col.number_input("Total Marks", value=def_total, key=f"tm_{s}")
-                om = o_col.number_input("Obtained", value=0, key=f"om_{s}")
-                selected_marks[s] = [tm, om]
-
-    # Generate Button
-    process_btn = st.form_submit_button("Step 1: Process Result Card")
-
-# Logic to handle PDF generation (Outside the form to fix download button error)
-if process_btn:
-    if selected_marks:
-        t_sum = sum(v[0] for v in selected_marks.values())
-        o_sum = sum(v[1] for v in selected_marks.values())
-        per = round((o_sum / t_sum) * 100, 1) if t_sum > 0 else 0
-        
-        final_info = {
-            "name": name, "father": father, "class": s_class, "roll": roll, 
-            "section": section, "marks": selected_marks, "t_total": t_sum, 
-            "t_obt": o_sum, "per": per, "grade": get_auto_grade(per), 
-            "perf": performance, "pos": position, "date": res_date.strftime("%d-%m-%Y")
-        }
-        
-        st.session_state.pdf_blob = generate_pdf(final_info, logo_image)
-        st.session_state.file_name = f"{name}_Result.pdf"
-        st.success(f"Result for {name} generated! Now click the Download button below.")
-    else:
-        st.error("Please select at least one subject.")
-
-# Step 2: Download Button (STRICTLY OUTSIDE THE FORM)
-if st.session_state.pdf_blob:
-    st.divider()
-    st.download_button(
-        label=f"📥 Step 2: Download {st.session_state.file_name}",
-        data=st.session_state.pdf_blob,
-        file_name=st.session_state.file_name,
-        mime="application/pdf"
-    )
+if __name__ == "__main__":
+    main()
