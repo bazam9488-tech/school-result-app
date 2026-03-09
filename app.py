@@ -2,173 +2,169 @@ import streamlit as st
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
-from reportlab.platypus import Table, TableStyle
 import io
 import datetime
 
-# --- CONFIGURATION ---
-st.set_page_config(page_title="PDF Result Card Generator", layout="centered")
+# --- Page Config ---
+st.set_page_config(page_title="GHS Bhutta Mohabbat Result Generator", layout="centered")
 
-def get_grade(percentage):
-    """Enhanced grading scale."""
-    if percentage >= 90: return "A+"
-    elif percentage >= 80: return "A"
-    elif percentage >= 70: return "B"
-    elif percentage >= 60: return "C"
-    elif percentage >= 50: return "D"
-    else: return "F (Fail)"
+def get_grade_info(percentage):
+    if percentage >= 80: return "A+", "Excellent"
+    elif percentage >= 70: return "A", "Very Good"
+    elif percentage >= 60: return "B", "Good"
+    elif percentage >= 50: return "C", "Satisfactory"
+    elif percentage >= 40: return "D", "Fair"
+    else: return "F", "Poor"
 
 def generate_pdf(data):
-    """
-    Generates a professional PDF result card.
-    """
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # 1. Page Border
-    p.setStrokeColor(colors.black)
-    p.rect(20, 20, width - 40, height - 40, stroke=1, fill=0)
+    # Outer Borders
+    p.setStrokeColor(colors.HexColor("#7B96AC"))
+    p.setLineWidth(2)
+    p.rect(15, 15, width - 30, height - 30)
+    p.setLineWidth(1)
+    p.rect(20, 20, width - 40, height - 40)
 
-    # 2. Header Section
-    p.setFillColor(colors.HexColor("#1F497D")) # Professional Dark Blue
-    p.rect(20, height - 120, width - 40, 100, fill=1)
-    
-    p.setFillColor(colors.white)
-    p.setFont("Helvetica-Bold", 24)
-    p.drawCentredString(width / 2, height - 60, data['school_name'].upper())
-    
-    p.setFont("Helvetica", 14)
-    p.drawCentredString(width / 2, height - 90, "ANNUAL PROGRESS REPORT - 2026")
-
-    # 3. Student Information
+    # Header Section
     p.setFillColor(colors.black)
-    p.setFont("Helvetica-Bold", 12)
-    
-    curr_y = height - 160
-    p.drawString(50, curr_y, f"Student Name: {data['name']}")
-    p.drawString(350, curr_y, f"Class: {data['class']}")
-    
-    curr_y -= 25
-    p.drawString(50, curr_y, f"Roll Number: {data['roll']}")
-    p.drawString(350, curr_y, f"Date: {datetime.date.today().strftime('%B %d, %s')}")
-
-    # 4. Marks Table
-    table_data = [["Subject", "Maximum Marks", "Obtained Marks", "Grade"]]
-    for sub, marks in data['subjects'].items():
-        table_data.append([sub, "100", str(marks), get_grade(marks)])
-
-    # Table Styling
-    table = Table(table_data, colWidths=[200, 100, 100, 100])
-    style = TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#D3D3D3")),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.whitesmoke),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black)
-    ])
-    table.setStyle(style)
-    
-    # Calculate table position
-    table_width, table_height = table.wrap(0, 0)
-    table.drawOn(p, 50, curr_y - table_height - 30)
-
-    # 5. Result Summary
-    summary_y = curr_y - table_height - 80
-    total_marks = sum(data['subjects'].values())
-    max_total = len(data['subjects']) * 100
-    percentage = (total_marks / max_total) * 100
-    
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, summary_y, f"Total Marks: {total_marks} / {max_total}")
-    p.drawString(50, summary_y - 20, f"Percentage: {percentage:.2f}%")
-    p.setFont("Helvetica-Bold", 14)
-    p.drawString(50, summary_y - 45, f"Final Result: {'PASSED' if percentage >= 40 else 'FAILED'}")
-
-    # 6. Teacher Comments Section
-    p.setFont("Helvetica-Bold", 12)
-    p.drawString(50, summary_y - 90, "Teacher's Remarks:")
-    p.setFont("Helvetica-Oblique", 11)
-    
-    # Box for comments
-    p.rect(50, summary_y - 160, width - 100, 60)
-    p.drawString(60, summary_y - 110, data['comments'])
-
-    # 7. Footer / Signatures
-    # Bottom Left: Class Teacher
-    p.line(50, 70, 200, 70)
     p.setFont("Helvetica", 10)
-    p.drawString(75, 55, "Class Teacher")
-
-    # Bottom Right: Senior Headmaster
-    p.line(width - 200, 70, width - 50, 70)
+    p.drawCentredString(width / 2, height - 45, "SCHOOL EDUCATION DEPARTMENT")
+    
+    p.setFont("Helvetica-Bold", 18)
+    p.drawCentredString(width / 2, height - 65, data['school_name'].upper())
+    
     p.setFont("Helvetica-Bold", 10)
-    p.drawRightString(width - 50, 55, "Safdar Javed")
-    p.setFont("Helvetica", 9)
-    p.drawRightString(width - 50, 42, "Senior Headmaster")
+    p.drawCentredString(width / 2, height - 80, f"EMIS CODE: {data['emis']} | DISTRICT {data['district'].upper()}")
+    
+    p.setFont("Helvetica-Bold", 22)
+    p.setFillColor(colors.HexColor("#7B96AC"))
+    p.drawCentredString(width / 2, height - 110, "STUDENT REPORT CARD")
+
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica-Bold", 8)
+    p.drawString(40, height - 125, f"Session {data['session']}")
+
+    # Student Info Bars (Blue Background)
+    p.setFillColor(colors.HexColor("#7B96AC"))
+    p.rect(40, height - 155, 270, 20, fill=1, stroke=1)
+    p.rect(310, height - 155, 245, 20, fill=1, stroke=1)
+    p.rect(40, height - 175, 175, 20, fill=1, stroke=1)
+    p.rect(215, height - 175, 175, 20, fill=1, stroke=1)
+    p.rect(390, height - 175, 165, 20, fill=1, stroke=1)
+
+    p.setFillColor(colors.white)
+    p.setFont("Helvetica-Bold", 9)
+    p.drawString(45, height - 148, f"NAME: {data['name'].upper()}")
+    p.drawString(315, height - 148, f"FATHER NAME: {data['father_name'].upper()}")
+    p.drawString(45, height - 168, f"CLASS: {data['class']}")
+    p.drawString(220, height - 168, f"ROLL NO: {data['roll']}")
+    p.drawString(395, height - 168, f"SECTION: {data['section']}")
+
+    # Marks Table
+    y_table = height - 210
+    p.setFillColor(colors.HexColor("#333333"))
+    p.rect(40, y_table, 515, 25, fill=1)
+    p.setFillColor(colors.white)
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(150, y_table + 8, "SUBJECT")
+    p.drawString(350, y_table + 8, "TOTAL MARKS")
+    p.drawString(460, y_table + 8, "OBTAINED")
+
+    y_row = y_table - 22
+    p.setFillColor(colors.black)
+    p.setFont("Helvetica", 10)
+    
+    total_max = 0
+    total_obt = 0
+    for sub, marks in data['subjects'].items():
+        p.rect(40, y_row, 515, 22)
+        p.line(330, y_row, 330, y_row + 22)
+        p.line(440, y_row, 440, y_row + 22)
+        p.drawString(45, y_row + 7, sub)
+        p.drawCentredString(385, y_row + 7, "50")
+        p.drawCentredString(495, y_row + 7, str(marks))
+        total_max += 50
+        total_obt += marks
+        y_row -= 22
+
+    # Grand Total
+    p.setFont("Helvetica-Bold", 10)
+    p.rect(40, y_row, 515, 22)
+    p.drawString(45, y_row + 7, "GRAND TOTAL")
+    p.drawCentredString(385, y_row + 7, str(total_max))
+    p.drawCentredString(495, y_row + 7, str(total_obt))
+
+    # Summary Section
+    y_summary = y_row - 40
+    perc = (total_obt / total_max) * 100
+    grade, perf = get_grade_info(perc)
+    box_w = 515 / 4
+    for i, label in enumerate(["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]):
+        p.rect(40 + (i * box_w), y_summary, box_w, 30)
+        p.setFont("Helvetica", 8)
+        val = f"{perc:.1f}%" if i==0 else (data['position'] if i==1 else (perf if i==2 else grade))
+        p.drawCentredString(40 + (i * box_w) + (box_w/2), y_summary + 18, f"{label}: {val}")
+
+    # Quotes
+    p.setFont("Helvetica-Oblique", 10)
+    p.drawCentredString(width/2, 200, '"Education is the most powerful weapon which you can use to change the world."')
+    p.drawCentredString(width/2, 180, '"The roots of education are bitter, but the fruit is sweet."')
+
+    # Signatures
+    p.setFont("Helvetica-Bold", 9)
+    p.line(100, 110, 230, 110)
+    p.drawCentredString(165, 95, "CLASS TEACHER")
+    p.line(width - 230, 110, width - 100, 110)
+    p.drawCentredString(width - 165, 95, "SENIOR HEAD MASTER (SAFDAR JAVED)")
+    p.setFont("Helvetica", 8)
+    p.drawRightString(width - 40, 60, f"Result Declaration Date: {data['date']}")
 
     p.showPage()
     p.save()
     buffer.seek(0)
     return buffer
 
-# --- STREAMLIT UI ---
+# --- Streamlit Interface ---
 def main():
-    st.title("📄 PDF School Result Generator")
-    st.info("Generates a formal A4 PDF report with automated grading and signatures.")
-
+    st.title("GHS Bhutta Mohabbat - Result Card System")
+    
     with st.sidebar:
-        st.header("School Details")
-        school_name = st.text_input("School Name", "Government High School Bhutta Mohabbat")
-        
-        st.header("Subjects Configuration")
-        subject_input = st.text_area("List Subjects (one per line)", 
-                                     "English\nMathematics\nPhysics\nChemistry\nUrdu\nComputer Science")
-        subjects = [s.strip() for s in subject_input.split('\n') if s.strip()]
+        st.header("School Info")
+        school = st.text_input("School Name", "Govt. High School Bhutta Mohabbat")
+        emis = st.text_input("EMIS Code", "39310025")
+        district = st.text_input("District", "Okara")
+        session = st.text_input("Session", "2025-2026")
 
-    # Student Data Input
-    col1, col2 = st.columns(2)
-    with col1:
-        name = st.text_input("Student Name", placeholder="e.g. Ali Ahmed")
-        roll = st.text_input("Roll Number", placeholder="e.g. 1025")
-    with col2:
-        student_class = st.text_input("Class", placeholder="e.g. 10th-A")
-        
-    st.subheader("Marks Entry")
-    marks_data = {}
-    m_cols = st.columns(3)
-    for i, sub in enumerate(subjects):
-        with m_cols[i % 3]:
-            marks_data[sub] = st.number_input(f"{sub}", 0, 100, 50, key=sub)
+    st.subheader("Student Details")
+    c1, c2, c3 = st.columns(3)
+    name = c1.text_input("Name", "Kharu")
+    father = c2.text_input("Father's Name", "Danu")
+    s_class = c3.text_input("Class", "8")
+    
+    c4, c5, c6 = st.columns(3)
+    roll = c4.text_input("Roll No", "23")
+    section = c5.text_input("Section", "A")
+    pos = c6.text_input("Position", "---")
 
-    comments = st.text_area("Teacher's Remarks", "Excellent performance and hard-working student.")
+    st.subheader("Marks (Out of 50)")
+    subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
+    marks = {}
+    cols = st.columns(4)
+    for i, s in enumerate(subs):
+        marks[s] = cols[i % 4].number_input(s, 0, 50, 40)
 
-    if st.button("Generate & Preview PDF", type="primary"):
-        if not name or not roll:
-            st.warning("Please fill in the Student Name and Roll Number.")
-        else:
-            data_payload = {
-                "school_name": school_name,
-                "name": name,
-                "roll": roll,
-                "class": student_class,
-                "subjects": marks_data,
-                "comments": comments
-            }
-            
-            pdf_bytes = generate_pdf(data_payload)
-            
-            # Download Button
-            st.success("PDF Generated Successfully!")
-            st.download_button(
-                label="📥 Download Result Card (PDF)",
-                data=pdf_bytes,
-                file_name=f"Result_{name}_{roll}.pdf",
-                mime="application/pdf"
-            )
+    if st.button("Generate Result Card"):
+        data = {
+            "school_name": school, "emis": emis, "district": district, "session": session,
+            "name": name, "father_name": father, "class": s_class, "roll": roll,
+            "section": section, "subjects": marks, "position": pos,
+            "date": "31-03-2026"
+        }
+        pdf = generate_pdf(data)
+        st.download_button("Download PDF", pdf, f"Result_{name}.pdf", "application/pdf")
 
 if __name__ == "__main__":
     main()
