@@ -3,6 +3,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
+from reportlab.lib.utils import ImageReader  # Logo fix ke liye zaruri hai
 from PIL import Image
 import io
 import datetime
@@ -30,23 +31,12 @@ def generate_pdf(data):
     p.setLineWidth(1)
     p.rect(20, 20, width - 40, height - 40)
 
-    # 2. Header with Logo Space (Left Top)
-    if data['logo'] is not None:
-        try:
-            logo_img = Image.open(data['logo'])
-            if logo_img.mode in ("RGBA", "P"): logo_img = logo_img.convert("RGB")
-            temp_logo = io.BytesIO()
-            logo_img.save(temp_logo, format='JPEG')
-            temp_logo.seek(0)
-            p.drawInlineImage(temp_logo, 45, height - 100, width=70, height=70)
-        except: pass
-
-    # School Info (Shifted slightly right for logo space)
+    # 2. Header Section
     p.setFillColor(colors.black)
     p.setFont("Helvetica", 9)
     p.drawCentredString(width / 2 + 30, height - 45, "SCHOOL EDUCATION DEPARTMENT")
     
-    p.setFont("Helvetica-Bold", 16) # Font size reduced
+    p.setFont("Helvetica-Bold", 16)
     p.drawCentredString(width / 2 + 30, height - 62, data['school_name'].upper())
     
     p.setFont("Helvetica-Bold", 9)
@@ -56,35 +46,43 @@ def generate_pdf(data):
     p.setFillColor(colors.HexColor("#7B96AC"))
     p.drawCentredString(width / 2, height - 115, "STUDENT REPORT CARD")
 
+    # 3. Logo Drawing (Fix Applied Here)
+    if data['logo'] is not None:
+        try:
+            # Logo ko ImageReader ke zariye load karna zyada behtar hai
+            logo_reader = ImageReader(data['logo'])
+            # Coordinates: x=40, y=height-105, width=65, height=65
+            p.drawImage(logo_reader, 45, height - 105, width=65, height=65, mask='auto')
+        except Exception as e:
+            st.error(f"Logo print nahi ho saka: {e}")
+
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Bold", 8)
     p.drawString(40, height - 130, f"Session {data['session']}")
 
-    # 3. Student Info Grid (Rows & Columns)
+    # 4. Student Info Grid
     info_data = [
         [f"NAME: {data['student_name'].upper()}", f"FATHER NAME: {data['father_name'].upper()}"],
         [f"CLASS: {data['class']}", f"ROLL NO: {data['roll']}", f"SECTION: {data['section']}"]
     ]
     
-    # Table for Name & Father Name
     t1 = Table(info_data[:1], colWidths=[275, 240])
     t1.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#7B96AC")),
         ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('GRID', (0,0), (-1,-1), 1, colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.white),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
     
-    # Table for Class, Roll, Section
     t2 = Table(info_data[1:], colWidths=[175, 175, 165])
     t2.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#7B96AC")),
         ('TEXTCOLOR', (0,0), (-1,-1), colors.white),
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
         ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('GRID', (0,0), (-1,-1), 1, colors.white),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.white),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
 
@@ -93,7 +91,7 @@ def generate_pdf(data):
     t2.wrapOn(p, 40, height - 180)
     t2.drawOn(p, 40, height - 180)
 
-    # 4. Marks Table
+    # 5. Marks Table
     y_table = height - 215
     p.setFillColor(colors.HexColor("#333333"))
     p.rect(40, y_table, 515, 25, fill=1)
@@ -124,7 +122,7 @@ def generate_pdf(data):
     p.drawCentredString(385, y_row + 7, str(grand_total_max))
     p.drawCentredString(495, y_row + 7, str(grand_total_obt))
 
-    # 5. Result Summary
+    # 6. Result Summary
     y_summary = y_row - 40
     perc = (grand_total_obt / grand_total_max * 100) if grand_total_max > 0 else 0
     grade, perf = get_grade_info(perc)
@@ -135,13 +133,13 @@ def generate_pdf(data):
         p.setFont("Helvetica-Bold", 8)
         p.drawCentredString(40 + (i * box_w) + (box_w/2), y_summary + 18, f"{label}: {val}")
 
-    # 6. Educational Quotes
+    # 7. Educational Quotes
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Oblique", 11)
     p.drawCentredString(width/2, 220, '"Education is the most powerful weapon which you can use to change the world."')
     p.drawCentredString(width/2, 200, '"The beautiful thing about learning is that no one can take it away from you."')
 
-    # 7. Signatures
+    # 8. Signatures
     p.setFont("Helvetica-Bold", 9)
     p.line(80, 110, 210, 110); p.drawCentredString(145, 95, "CLASS TEACHER")
     p.line(width - 240, 110, width - 40, 110)
@@ -152,18 +150,18 @@ def generate_pdf(data):
     buffer.seek(0)
     return buffer
 
-# --- Streamlit UI ---
 def main():
     st.title("GHS Bhutta Mohabbat - Result Card Generator")
+    
     with st.sidebar:
-        st.header("Settings")
+        st.header("Setup")
         school = st.text_input("School Name", "Govt. High School Bhutta Mohabbat")
         emis = st.text_input("EMIS Code", "39310025")
-        district = st.text_input("District", "Okara")
-        session = st.text_input("Session", "2025-2026")
-        logo = st.file_uploader("Upload Logo", type=["jpg", "png"])
+        dist = st.text_input("District", "Okara")
+        sess = st.text_input("Session", "2025-2026")
+        logo = st.file_uploader("Upload Logo", type=["jpg", "png", "jpeg"])
 
-    st.subheader("Student Info")
+    st.subheader("Student Details")
     col1, col2, col3 = st.columns(3)
     s_name = col1.text_input("Student Name", "Kharu")
     f_name = col2.text_input("Father Name", "Danu")
@@ -172,7 +170,7 @@ def main():
     sec = col2.text_input("Section", "A")
     pos = col3.text_input("Position", "---")
 
-    st.subheader("Marks Entry")
+    st.subheader("Marks & Subjects")
     subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
     marks_data = {}
     for s in subs:
@@ -182,11 +180,15 @@ def main():
             o = c3.number_input(f"Obtained ({s})", 0, t, 40, key=f"o{s}")
             marks_data[s] = {"total": t, "obt": o}
 
-    if st.button("Generate PDF"):
-        data = {"school_name": school, "emis": emis, "district": district, "session": session, "logo": logo,
-                "student_name": s_name, "father_name": f_name, "class": s_class, "roll": roll, "section": sec, 
-                "position": pos, "marks_data": marks_data, "date": "31-03-2026"}
-        st.download_button("Download PDF", generate_pdf(data), f"Result_{s_name}.pdf", "application/pdf")
+    if st.button("Generate & Download PDF"):
+        if not marks_data:
+            st.error("Kam az kam ek subject select karein.")
+        else:
+            data = {"school_name": school, "emis": emis, "district": dist, "session": sess, "logo": logo,
+                    "student_name": s_name, "father_name": f_name, "class": s_class, "roll": roll, "section": sec, 
+                    "position": pos, "marks_data": marks_data, "date": "31-03-2026"}
+            pdf_bytes = generate_pdf(data)
+            st.download_button("Download PDF", pdf_bytes, f"Result_{s_name}.pdf", "application/pdf")
 
 if __name__ == "__main__":
     main()
