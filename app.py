@@ -119,16 +119,16 @@ def generate_pdf(data):
     grade, perf = get_grade_info(perc)
     box_w = 515 / 4
     for i, label in enumerate(["PERCENTAGE", "POSITION", "PERFORMANCE", "FINAL GRADE"]):
-        val = [f"{perc:.1f}%", data['position'], perf, grade][i]
+        val = [f"{perc:.1f}%", data['position'], data.get("performance", perf), grade][i]
         p.rect(40 + (i * box_w), y_summary, box_w, 30)
         p.setFont("Helvetica-Bold", 8)
         p.drawCentredString(40 + (i * box_w) + (box_w/2), y_summary + 18, f"{label}: {val}")
 
-    # Educational Quotes
+    # Educational Quotes (Shifted Up)
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Oblique", 11)
-    p.drawCentredString(width/2, 160, '"Education is the most powerful weapon which you can use to change the world."')
-    p.drawCentredString(width/2, 140, '"The beautiful thing about learning is that no one can take it away from you."')
+    p.drawCentredString(width/2, 200, '"Education is the most powerful weapon which you can use to change the world."')
+    p.drawCentredString(width/2, 180, '"The beautiful thing about learning is that no one can take it away from you."')
 
     # Signatures
     p.setFont("Helvetica-Bold", 9)
@@ -179,7 +179,8 @@ def main():
             data = {
                 "school_name": school, "emis": emis, "district": dist, "session": sess, "logo": logo,
                 "student_name": s_name, "father_name": f_name, "class": s_class, "roll": roll, "section": sec,
-                "position": pos, "marks_data": marks_data, "date": "31-03-2026"
+                "position": pos, "performance": perf,
+                "marks_data": marks_data, "date": "31-03-2026"
             }
             pdf_bytes = generate_pdf(data)
             st.download_button("Download PDF", pdf_bytes, f"Result_{s_name}.pdf", "application/pdf")
