@@ -7,7 +7,6 @@ from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
 import io
-import zipfile
 import pandas as pd
 import datetime
 
@@ -29,7 +28,7 @@ c.execute('''CREATE TABLE IF NOT EXISTS admin
              (id INTEGER PRIMARY KEY AUTOINCREMENT,
               username TEXT UNIQUE,
               password TEXT)''')
-# Create default admin if not exists
+# Default admin
 c.execute("SELECT * FROM admin")
 if not c.fetchall():
     c.execute("INSERT INTO admin (username,password) VALUES (?,?)", ("admin","admin123"))
@@ -164,95 +163,3 @@ def generate_pdf(data):
     p.showPage(); p.save()
     buffer.seek(0)
     return buffer
-
-# --- UI ---
-st.title("GHS Bhutta Mohabbat Result System")
-subs = ["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
-logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
-
-role = st.selectbox("Login as", ["Admin","Teacher"])
-if role == "Admin":
-    st.subheader("Admin Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login as Admin"):
-        c.execute("SELECT * FROM admin WHERE username=? AND password=?",(username,password))
-        if c.fetchone():
-            st.success("Logged in as Admin ✅")
-            # Admin Panel
-            tab1,tab2,tab3 = st.tabs(["Teacher Management","Student Management","Marks Overview"])
-            
-            # ----- Teacher Management -----
-            with tab1:
-                st.header("Teachers")
-                t_name = st.text_input("Teacher Name")
-                t_class = st.text_input("Assigned Class")
-                if st.button("Add Teacher"):
-                    if t_name and t_class:
-                        c.execute("INSERT OR IGNORE INTO teachers (name,assigned_class) VALUES (?,?)",(t_name,t_class))
-                        conn.commit()
-                        st.success(f"Teacher {t_name} added with class {t_class}")
-                df_t = pd.read_sql("SELECT * FROM teachers",conn)
-                st.dataframe(df_t)
-            
-            # ----- Student Management -----
-            with tab2:
-                st.header("Students")
-                s_name = st.text_input("Student Name")
-                s_father = st.text_input("Father Name")
-                s_class = st.text_input("Class")
-                s_section = st.text_input("Section")
-                s_roll = st.number_input("Roll Number", min_value=1, step=1)
-                if st.button("Add Student"):
-                    c.execute("INSERT OR IGNORE INTO students (roll,name,father,class,section) VALUES (?,?,?,?,?)",
-                              (s_roll,s_name,s_father,s_class,s_section))
-                    conn.commit()
-                    st.success(f"Student {s_name} added")
-                df_s = pd.read_sql("SELECT * FROM students",conn)
-                st.dataframe(df_s)
-                
-                # Delete or Print PDF per student
-                st.subheader("Student Actions")
-                for idx,row in df_s.iterrows():
-                    col1,col2,col3 = st.columns([2,1,1])
-                    col1.write(f"{row['name']} (Roll {row['roll']})")
-                    if col2.button("Print PDF", key=f"print_{row['roll']}"):
-                        # Fetch marks
-                        c.execute("SELECT subject,total,obtained FROM marks WHERE roll=?",(row['roll'],))
-                        marks_rows = c.fetchall()
-                        marks_dict = {r[0]:{"total":r[1],"obt":r[2]} for r in marks_rows}
-                        pdf_data = {"school_name":"GHS Bhutta Mohabbat",
-                                    "emis":"39310025",
-                                    "district":"Okara",
-                                    "session":"2025-2026",
-                                    "logo":logo,
-                                    "student_name":row['name'],
-                                    "father_name":row['father'],
-                                    "class":row['class'],
-                                    "roll":row['roll'],
-                                    "section":row['section'],
-                                    "position":"---",
-                                    "marks_data":marks_dict,
-                                    "date":datetime.date.today().strftime("%d-%m-%Y")}
-                        pdf_bytes = generate_pdf(pdf_data)
-                        st.download_button(f"Download PDF ({row['name']})",pdf_bytes,f"Result_{row['name']}.pdf","application/pdf")
-                    if col3.button("Delete", key=f"del_{row['roll']}"):
-                        c.execute("DELETE FROM marks WHERE roll=?",(row['roll'],))
-                        c.execute("DELETE FROM students WHERE roll=?",(row['roll'],))
-                        conn.commit()
-                        st.warning(f"{row['name']} deleted")
-                        st.experimental_rerun()
-            
-            # ----- Marks Overview -----
-            with tab3:
-                st.header("Marks Overview")
-                c.execute("SELECT s.name,s.roll,s.class,s.section,m.subject,m.total,m.obtained,m.date FROM students s LEFT JOIN marks m ON s.roll=m.roll ORDER BY s.class,s.roll")
-                rows = c.fetchall()
-                if rows:
-                    df = pd.DataFrame(rows, columns=["Student","Roll","Class","Section","Subject","Total","Obtained","Date"])
-                    df["Marks Added"] = df["Obtained"].apply(lambda x:"Yes" if x else "No")
-                    st.dataframe(df)
-                else:
-                    st.info("No marks data yet.")
-        else:
-            st.error("Invalid credentials")
