@@ -76,7 +76,7 @@ def generate_pdf(data):
     p.drawCentredString(width / 2, height - 115, "STUDENT REPORT CARD")
 
     # Logo
-    if data['logo']:
+    if data.get('logo'):
         try:
             logo_reader = ImageReader(data['logo'])
             p.drawImage(logo_reader, 45, height - 105, width=65, height=65, mask='auto')
@@ -92,7 +92,6 @@ def generate_pdf(data):
         [f"NAME: {data['student_name'].upper()}", f"FATHER NAME: {data['father_name'].upper()}"],
         [f"CLASS: {data['class']}", f"ROLL NO: {data['roll']}", f"SECTION: {data['section']}"]
     ]
-    from reportlab.platypus import Table, TableStyle
     t1 = Table(info_data[:1], colWidths=[275, 240])
     t1.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#7B96AC")),
                             ('TEXTCOLOR',(0,0),(-1,-1),colors.white),
@@ -150,13 +149,26 @@ def generate_pdf(data):
         p.setFont("Helvetica-Bold",8)
         p.drawCentredString(40+(i*box_w)+(box_w/2),y_summary+18,f"{label}: {val}")
 
-    # Quotes
+    # Top 3 Students
+    if "class_top3" in data:
+        y_top = y_summary - 60
+        p.setFont("Helvetica-Bold",10)
+        p.drawString(40, y_top+12, "Class Top 3:")
+        p.setFont("Helvetica",9)
+        p.rect(40, y_top-50, 515, 50, fill=0)
+        p.line(40+350, y_top-50, 40+350, y_top)
+        p.line(40+450, y_top-50, 40+450, y_top)
+        for idx, (name, total, pos) in enumerate(data['class_top3']):
+            y_pos = y_top - (idx*15) - 15
+            p.drawString(45, y_pos, f"{pos}. {name}")
+            p.drawCentredString(405, y_pos, str(total))
+            p.drawCentredString(495, y_pos, f"Pos {pos}")
+
+    # Quotes & Signatures
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Oblique",11)
     p.drawCentredString(A4[0]/2,200,'"Education is the most powerful weapon which you can use to change the world."')
     p.drawCentredString(A4[0]/2,180,'"The beautiful thing about learning is that no one can take it away from you."')
-
-    # Signatures
     p.setFont("Helvetica-Bold",9)
     p.line(80,110,210,110); p.drawCentredString(145,95,"CLASS TEACHER")
     p.line(A4[0]-240,110,A4[0]-40,110); p.drawCentredString(A4[0]-140,95,"SENIOR HEAD MASTER (SAFDAR JAVED)")
@@ -172,5 +184,171 @@ role = st.selectbox("Login as",["Admin","Teacher"])
 logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
 subs=["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
 
-# The rest of Admin Panel + Teacher Panel + Student marks entry + PDF generation + Delete per student
-# (You can now add below this code based on previous full app logic, all session_state fixes applied)
+# --- Admin Panel ---
+if role == "Admin":
+    if not st.session_state.admin_logged_in:
+        st.subheader("Admin Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            c.execute("SELECT * FROM admin WHERE username=? AND password=?", (username, password))
+            if c.fetchone():
+                st.session_state.admin_logged_in = True
+                st.session_state.admin_username = username
+                st.success("Logged in as Admin")
+            else:
+                st.error("Invalid credentials")
+    else:
+        st.subheader(f"Welcome Admin: {st.session_state.admin_username}")
+        admin_tabs = st.tabs(["Manage Teachers", "Manage Students", "Logout"])
+
+        # --- Manage Teachers ---
+        with admin_tabs[0]:
+            st.write("**Add Teacher**")
+            t_name = st.text_input("Teacher Name")
+            t_class = st.text_input("Assigned Class")
+            if st.button("Add Teacher"):
+                if t_name and t_class:
+                    try:
+                        c.execute("INSERT INTO teachers (name, assigned_class) VALUES (?,?)", (t_name, t_class))
+                        conn.commit()
+                        st.success(f"Teacher {t_name} added.")
+                    except sqlite3.IntegrityError:
+                        st.error("Teacher already exists.")
+            st.write("**Existing Teachers**")
+            c.execute("SELECT id,name,assigned_class FROM teachers")
+            teachers = c.fetchall()
+            for tid, name, tclass in teachers:
+                col1, col2 = st.columns([3,1])
+                col1.write(f"{name} | Class: {tclass}")
+                if col2.button("Delete", key=f"del_teacher_{tid}"):
+                    c.execute("DELETE FROM teachers WHERE id=?", (tid,))
+                    conn.commit()
+                    st.experimental_rerun()
+
+        # --- Manage Students ---
+        with admin_tabs[1]:
+            st.write("**Add Student**")
+            s_name = st.text_input("Student Name")
+            s_father = st.text_input("Father Name")
+            s_class = st.text_input("Class")
+            s_section = st.text_input("Section")
+            s_roll = st.number_input("Roll No", min_value=1, step=1)
+            if st.button("Add Student"):
+                try:
+                    c.execute("INSERT INTO students (roll,name,father,class,section) VALUES (?,?,?,?,?)",
+                              (s_roll, s_name, s_father, s_class, s_section))
+                    conn.commit()
+                    st.success(f"Student {s_name} added.")
+                except sqlite3.IntegrityError:
+                    st.error("Roll number already exists.")
+            st.write("**Existing Students**")
+            c.execute("SELECT roll,name,class,section FROM students")
+            students = c.fetchall()
+            for roll, name, sclass, section in students:
+                col1, col2 = st.columns([3,1])
+                col1.write(f"{roll} | {name} | Class {sclass}-{section}")
+                if col2.button("Delete", key=f"del_student_{roll}"):
+                    c.execute("DELETE FROM students WHERE roll=?", (roll,))
+                    c.execute("DELETE FROM marks WHERE roll=?", (roll,))
+                    conn.commit()
+                    st.experimental_rerun()
+
+        # --- Logout ---
+        with admin_tabs[2]:
+            if st.button("Logout"):
+                st.session_state.admin_logged_in = False
+                st.session_state.admin_username = ""
+                st.experimental_rerun()
+
+# --- Teacher Panel ---
+elif role == "Teacher":
+    if not st.session_state.teacher_logged_in:
+        st.subheader("Teacher Login")
+        t_name = st.text_input("Teacher Name")
+        if st.button("Login as Teacher"):
+            c.execute("SELECT * FROM teachers WHERE name=?", (t_name,))
+            if c.fetchone():
+                st.session_state.teacher_logged_in = True
+                st.session_state.teacher_name = t_name
+                st.success(f"Logged in as {t_name}")
+            else:
+                st.error("Teacher not found.")
+    else:
+        st.subheader(f"Welcome Teacher: {st.session_state.teacher_name}")
+        teacher_tabs = st.tabs(["Enter Marks", "View Results", "Logout"])
+
+        # --- Enter Marks with Update ---
+        with teacher_tabs[0]:
+            c.execute("SELECT DISTINCT class,section FROM students")
+            classes = [f"{cl}-{sec}" for cl,sec in c.fetchall()]
+            selected_class = st.selectbox("Select Class-Section", classes)
+            if selected_class:
+                s_class,s_section = selected_class.split("-")
+                c.execute("SELECT roll,name FROM students WHERE class=? AND section=?", (s_class,s_section))
+                students_list = c.fetchall()
+                selected_student = st.selectbox("Select Student", [f"{roll} | {name}" for roll,name in students_list])
+                if selected_student:
+                    roll = int(selected_student.split("|")[0].strip())
+                    marks = {}
+                    for sub in subs:
+                        c.execute("SELECT obtained FROM marks WHERE roll=? AND subject=?", (roll,sub))
+                        res = c.fetchone()
+                        marks[sub] = st.number_input(f"{sub} Marks", min_value=0, max_value=100, step=1,
+                                                     value=res[0] if res else 0)
+                    if st.button("Save/Update Marks"):
+                        today = datetime.date.today().strftime("%d-%m-%Y")
+                        for sub,val in marks.items():
+                            c.execute("SELECT id FROM marks WHERE roll=? AND subject=?", (roll,sub))
+                            if c.fetchone():
+                                c.execute("UPDATE marks SET obtained=?, total=?, date=? WHERE roll=? AND subject=?",
+                                          (val,100,today,roll,sub))
+                            else:
+                                c.execute("INSERT INTO marks (roll,subject,total,obtained,date) VALUES (?,?,?,?,?)",
+                                          (roll,sub,100,val,today))
+                        conn.commit()
+                        st.success("Marks saved/updated successfully.")
+
+        # --- View Results with Position + Top3 ---
+        with teacher_tabs[1]:
+            c.execute("SELECT DISTINCT class,section FROM students")
+            classes = [f"{cl}-{sec}" for cl,sec in c.fetchall()]
+            selected_class = st.selectbox("Select Class-Section for Results", classes, key="result_class")
+            if selected_class:
+                s_class,s_section = selected_class.split("-")
+                c.execute("SELECT roll,name FROM students WHERE class=? AND section=?", (s_class,s_section))
+                students_list = c.fetchall()
+                selected_student = st.selectbox("Select Student to View", [f"{roll} | {name}" for roll,name in students_list], key="result_student")
+                if selected_student:
+                    roll = int(selected_student.split("|")[0].strip())
+                    c.execute("SELECT name,father,class,section FROM students WHERE roll=?", (roll,))
+                    s = c.fetchone()
+                    c.execute("SELECT subject,total,obtained FROM marks WHERE roll=?", (roll,))
+                    marks_data = {sub: {'total': total,'obt':obt} for sub,total,obt in c.fetchall()}
+
+                    # Position calculation
+                    c.execute("SELECT roll,SUM(obtained) as total_obt FROM marks "
+                              "JOIN students USING(roll) WHERE class=? AND section=? GROUP BY roll ORDER BY total_obt DESC",
+                              (s_class,s_section))
+                    rank_list = c.fetchall()
+                    position = [idx+1 for idx,(r,t) in enumerate(rank_list) if r==roll][0]
+
+                    # Top 3 for class
+                    c.execute("""
+                    SELECT students.name, SUM(marks.obtained) as total_obt
+                    FROM marks JOIN students USING(roll)
+                    WHERE students.class=? AND students.section=?
+                    GROUP BY roll ORDER BY total_obt DESC LIMIT 3
+                    """, (s_class, s_section))
+                    top3 = c.fetchall()
+                    top3_data = [(name, total, idx+1) for idx,(name,total) in enumerate(top3)]
+
+                    if marks_data:
+                        data = {
+                            'school_name': 'GHS Bhutta Mohabbat',
+                            'emis':'123456',
+                            'district':'Sargodha',
+                            'session':'2025-26',
+                            'student_name': s[0],
+                            'father_name': s[1],
+                            'class
