@@ -26,12 +26,6 @@ c.execute('''CREATE TABLE IF NOT EXISTS teachers
               name TEXT UNIQUE, assigned_class TEXT)''')
 conn.commit()
 
-# --- Session State ---
-if "teacher_logged_in" not in st.session_state:
-    st.session_state.teacher_logged_in = False
-if "teacher_username" not in st.session_state:
-    st.session_state.teacher_username = ""
-
 # --- Helper Functions ---
 def get_grade_info(percentage):
     if percentage >= 80: return "A+", "Excellent"
@@ -146,27 +140,7 @@ def generate_pdf(data):
 # UI Start
 # ---------------------------
 st.title("GHS Bhutta Mohabbat Result System")
-role = st.selectbox("Login as",["Teacher"])  # Only Teacher now
 logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
 subs=["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
 
-# --- Teacher Login ---
-if not st.session_state.teacher_logged_in:
-    st.subheader("Teacher Login")
-    with st.form("teacher_login_form"):
-        username = st.text_input("Teacher Name").strip()
-        submitted = st.form_submit_button("Login")
-        if submitted:
-            c.execute("SELECT * FROM teachers WHERE name=?", (username,))
-            if c.fetchone():
-                st.session_state.teacher_logged_in=True
-                st.session_state.teacher_username=username
-                st.success(f"Logged in as {username}")
-                st.experimental_rerun()
-            else:
-                st.error("Teacher not found! Please contact admin to add teacher.")
-
-# --- Teacher Panel ---
-if st.session_state.teacher_logged_in:
-    st.subheader(f"Welcome Teacher: {st.session_state.teacher_username}")
-    st.info("You can now add student marks and generate report cards.")
+st.info("You can now directly enter student marks and generate report cards without login.")
