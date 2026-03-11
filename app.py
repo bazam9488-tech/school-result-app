@@ -29,11 +29,11 @@ c.execute('''CREATE TABLE IF NOT EXISTS admin
               username TEXT UNIQUE,
               password TEXT)''')
 
-# Default admin
-c.execute("SELECT * FROM admin")
-if not c.fetchall():
+# --- Ensure default admin exists ---
+c.execute("SELECT * FROM admin WHERE username='admin'")
+if not c.fetchone():
     c.execute("INSERT INTO admin (username,password) VALUES (?,?)", ("admin","admin123"))
-conn.commit()
+    conn.commit()
 
 # --- Session State ---
 if "admin_logged_in" not in st.session_state:
@@ -206,9 +206,7 @@ if role=="Admin":
                 else:
                     st.error("Invalid credentials")
 
-# -----------------------------
-# Admin Panel (after login)
-# -----------------------------
+# --- Admin Panel ---
 if st.session_state.admin_logged_in:
     st.subheader(f"Welcome Admin: {st.session_state.admin_username}")
     st.info("You can now manage teachers, students, and generate report cards.")
