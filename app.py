@@ -42,6 +42,8 @@ if "teacher_logged_in" not in st.session_state:
     st.session_state.teacher_logged_in = False
 if "admin_username" not in st.session_state:
     st.session_state.admin_username = ""
+if "teacher_username" not in st.session_state:
+    st.session_state.teacher_username = ""
 
 # --- Helper Functions ---
 def get_grade_info(percentage):
@@ -178,14 +180,35 @@ def generate_pdf(data):
     buffer.seek(0)
     return buffer
 
-# --- UI Start ---
+# ---------------------------
+# UI Start
+# ---------------------------
 st.title("GHS Bhutta Mohabbat Result System")
 role = st.selectbox("Login as",["Admin","Teacher"])
 logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
 subs=["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
 
+# --- Admin Login ---
+if role=="Admin":
+    if not st.session_state.admin_logged_in:
+        st.subheader("Admin Login")
+        with st.form("admin_login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login")
+            if submitted:
+                c.execute("SELECT * FROM admin WHERE username=? AND password=?", (username,password))
+                if c.fetchone():
+                    st.session_state.admin_logged_in=True
+                    st.session_state.admin_username=username
+                    st.success("Logged in as Admin")
+                    st.experimental_rerun()
+                else:
+                    st.error("Invalid credentials")
+
 # -----------------------------
-# Admin Panel & Teacher Panel
+# Admin Panel (after login)
 # -----------------------------
-# [Include full Admin and Teacher code from previous fixed version]
-# You can append Teacher Panel code from the last fix here.
+if st.session_state.admin_logged_in:
+    st.subheader(f"Welcome Admin: {st.session_state.admin_username}")
+    st.info("You can now manage teachers, students, and generate report cards.")
