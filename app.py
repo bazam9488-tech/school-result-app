@@ -22,7 +22,7 @@ def get_grade_info(percentage):
     elif percentage >= 40: return "D", "Fair"
     else: return "F", "Poor"
 
-# --- PDF Generator (Old Result Card) ---
+# --- PDF Generator ---
 def generate_pdf(data):
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
@@ -144,7 +144,7 @@ def generate_pdf(data):
     buffer.seek(0)
     return buffer
 
-# --- DATABASE SETUP ---
+# --- DATABASE ---
 conn = sqlite3.connect("students.db", check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS students
@@ -156,72 +156,80 @@ conn.commit()
 
 # --- Streamlit UI ---
 st.title("GHS Bhutta Mohabbat Result System")
-tab1, tab2 = st.tabs(["Single Student Result", "Daily/Bulk Marks"])
-subs = ["English", "Urdu", "Mathematics", "Islamiat", "Science", "Social Study", "Computer", "Tarjuma-tu-Quran"]
+subs = ["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
+logo = st.file_uploader("Upload Logo (used in all PDFs)", type=["jpg","png","jpeg"])
 
-# --- Tab 1 ---
+tab1, tab2 = st.tabs(["Single Student Result", "Daily/Bulk Marks"])
+
+# --- TAB 1 ---
 with tab1:
     st.header("Single Student Result Card")
     col1, col2, col3 = st.columns(3)
-    school = col1.text_input("School Name", "Govt. High School Bhutta Mohabbat")
-    emis = col2.text_input("EMIS Code", "39310025")
-    dist = col3.text_input("District", "Okara")
-    sess = st.text_input("Session", "2025-2026")
-    logo = st.file_uploader("Upload Logo", type=["jpg","png","jpeg"])
-
+    school = col1.text_input("School Name","Govt. High School Bhutta Mohabbat")
+    emis = col2.text_input("EMIS Code","39310025")
+    dist = col3.text_input("District","Okara")
+    sess = st.text_input("Session","2025-2026")
     s_col1, s_col2, s_col3 = st.columns(3)
-    s_name = s_col1.text_input("Student Name", "Faiz")
-    f_name = s_col2.text_input("Father Name", "Sarwar")
-    s_class = s_col3.text_input("Class", "9")
-    roll = s_col1.text_input("Roll No", "12")
-    sec = s_col2.text_input("Section", "A")
-    pos = s_col3.text_input("Position", "---")
-    perf = s_col3.text_input("Performance", "Good")
+    s_name = s_col1.text_input("Student Name","Faiz")
+    f_name = s_col2.text_input("Father Name","Sarwar")
+    s_class = s_col3.text_input("Class","9")
+    roll = s_col1.text_input("Roll No","12")
+    sec = s_col2.text_input("Section","A")
+    pos = s_col3.text_input("Position","---")
+    perf = s_col3.text_input("Performance","Good")
 
     st.subheader("Marks & Subjects")
     marks_data = {}
     for s in subs:
         c1, c2, c3 = st.columns([1,1,1])
         if c1.checkbox(f"Include {s}", value=True):
-            t = c2.number_input(f"Total ({s})", 1, 100, 50, key=f"t{s}")
-            o = c3.number_input(f"Obtained ({s})", 0, t, 40, key=f"o{s}")
+            t = c2.number_input(f"Total ({s})", 1,100,50, key=f"t{s}")
+            o = c3.number_input(f"Obtained ({s})",0,t,40,key=f"o{s}")
             marks_data[s] = {"total": t, "obt": o}
 
     if st.button("Generate & Download PDF", key="single_pdf"):
-        data = {"school_name": school, "emis": emis, "district": dist, "session": sess, "logo": logo,
-                "student_name": s_name, "father_name": f_name, "class": s_class, "roll": roll, "section": sec,
-                "position": pos, "performance": perf, "marks_data": marks_data, "date": "31-03-2026"}
+        data = {"school_name": school,"emis":emis,"district":dist,"session":sess,"logo":logo,
+                "student_name": s_name,"father_name": f_name,"class": s_class,"roll": roll,"section": sec,
+                "position": pos,"performance": perf,"marks_data": marks_data,"date":"31-03-2026"}
         pdf_bytes = generate_pdf(data)
-        st.download_button("Download PDF", pdf_bytes, f"Result_{s_name}.pdf", "application/pdf")
+        st.download_button("Download PDF", pdf_bytes, f"Result_{s_name}.pdf","application/pdf")
 
-# --- Tab 2 ---
+# --- TAB 2 ---
 with tab2:
     st.header("Daily Marks Entry / Bulk PDF Generation")
-    st.info("Use Roll No to select student or add new student if not exists")
+    st.info("Select Class to filter students and enter daily marks")
 
-    roll_input = st.text_input("Student Roll No")
-    name_input = st.text_input("Student Name")
-    father_input = st.text_input("Father Name")
-    class_input = st.text_input("Class")
-    section_input = st.text_input("Section")
+    # Fetch unique classes
+    c.execute("SELECT DISTINCT class FROM students")
+    classes = [row[0] for row in c.fetchall()]
+    selected_class = st.selectbox("Select Class", classes)
 
-    if st.button("Add/Update Student"):
-        if roll_input and name_input:
-            c.execute("INSERT OR REPLACE INTO students (roll, name, father, class, section) VALUES (?,?,?,?,?)",
-                      (roll_input, name_input, father_input, class_input, section_input))
-            conn.commit()
-            st.success("Student info saved")
+    # Students in selected class
+    c.execute("SELECT roll,name FROM students WHERE class=?",(selected_class,))
+    students_in_class = c.fetchall()
+    student_options = [f"{r[1]} (Roll {r[0]})" for r in students_in_class]
+    if student_options:
+        selected_student = st.selectbox("Select Student", student_options)
+        roll_input = int(selected_student.split("Roll ")[1][:-1])
+        name_input = selected_student.split(" (Roll")[0]
+        c.execute("SELECT father, section FROM students WHERE roll=?",(roll_input,))
+        father_input, section_input = c.fetchone()
+    else:
+        st.warning("No students in this class. Add students first.")
+        roll_input = None
 
-    st.subheader("Enter Marks for Today")
-    today = st.date_input("Test Date")
-    for s in subs:
-        c1, c2, c3 = st.columns([1,1,1])
-        total_marks = c2.number_input(f"Total ({s})", 1, 100, 50, key=f"b_t{s}")
-        obtained_marks = c3.number_input(f"Obtained ({s})", 0, total_marks, 40, key=f"b_o{s}")
-        if st.button(f"Save Marks ({s})", key=f"save_{s}"):
-            if roll_input:
-                c.execute("INSERT INTO marks (roll, subject, total, obtained, date) VALUES (?,?,?,?,?)",
-                          (roll_input, s, total_marks, obtained_marks, str(today)))
+    if roll_input:
+        st.subheader(f"Enter Marks for {name_input}")
+        today = st.date_input("Test Date")
+        marks_entry = {}
+        for s in subs:
+            c1, c2, c3 = st.columns([1,1,1])
+            total_marks = c2.number_input(f"Total ({s})",1,100,50,key=f"b_t{s}")
+            obtained_marks = c3.number_input(f"Obtained ({s})",0,total_marks,40,key=f"b_o{s}")
+            marks_entry[s] = {"total": total_marks,"obt": obtained_marks}
+            if st.button(f"Save Marks ({s})",key=f"save_{s}"):
+                c.execute("INSERT INTO marks (roll,subject,total,obtained,date) VALUES (?,?,?,?,?)",
+                          (roll_input,s,total_marks,obtained_marks,str(today)))
                 conn.commit()
                 st.success(f"{s} marks saved for Roll {roll_input}")
 
@@ -229,15 +237,15 @@ with tab2:
         c.execute("SELECT * FROM students")
         all_students = c.fetchall()
         zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zf:
+        with zipfile.ZipFile(zip_buffer,"a",zipfile.ZIP_DEFLATED,False) as zf:
             for stu in all_students:
                 roll, name, father, s_class, section = stu
-                c.execute("SELECT subject, total, obtained FROM marks WHERE roll=?", (roll,))
+                c.execute("SELECT subject,total,obtained FROM marks WHERE roll=?",(roll,))
                 marks_rows = c.fetchall()
-                marks_data = {r[0]: {"total": r[1], "obt": r[2]} for r in marks_rows}
-                data = {"school_name": school, "emis": emis, "district": dist, "session": sess, "logo": logo,
-                        "student_name": name, "father_name": father, "class": s_class, "roll": roll, "section": section,
-                        "position": "---", "performance": "Good", "marks_data": marks_data, "date": "31-03-2026"}
+                marks_data = {r[0]:{"total":r[1],"obt":r[2]} for r in marks_rows}
+                data = {"school_name": school,"emis":emis,"district":dist,"session":sess,"logo":logo,
+                        "student_name":name,"father_name":father,"class":s_class,"roll":roll,"section":section,
+                        "position":"---","performance":"Good","marks_data":marks_data,"date":"31-03-2026"}
                 pdf_bytes = generate_pdf(data)
-                zf.writestr(f"Result_{name}_{roll}.pdf", pdf_bytes.read())
-        st.download_button("Download All PDFs (ZIP)", zip_buffer, "All_Results.zip")
+                zf.writestr(f"Result_{name}_{roll}.pdf",pdf_bytes.read())
+        st.download_button("Download All PDFs (ZIP)",zip_buffer,"All_Results.zip")
