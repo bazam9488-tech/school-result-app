@@ -15,7 +15,6 @@ st.set_page_config(page_title="GHS Bhutta Mohabbat Result System", layout="wide"
 # --- Database ---
 conn = sqlite3.connect("students.db", check_same_thread=False)
 c = conn.cursor()
-# Tables
 c.execute('''CREATE TABLE IF NOT EXISTS students
              (roll INTEGER PRIMARY KEY, name TEXT, father TEXT, class TEXT, section TEXT)''')
 c.execute('''CREATE TABLE IF NOT EXISTS marks
@@ -102,10 +101,8 @@ def generate_pdf(data):
         ('GRID', (0,0), (-1,-1), 0.5, colors.white),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
     ]))
-    t1.wrapOn(p, 40, height - 160)
-    t1.drawOn(p, 40, height - 160)
-    t2.wrapOn(p, 40, height - 180)
-    t2.drawOn(p, 40, height - 180)
+    t1.wrapOn(p, 40, height - 160); t1.drawOn(p, 40, height - 160)
+    t2.wrapOn(p, 40, height - 180); t2.drawOn(p, 40, height - 180)
 
     # Marks Table
     y_table = height - 215
@@ -163,3 +160,95 @@ def generate_pdf(data):
     p.showPage(); p.save()
     buffer.seek(0)
     return buffer
+
+# --- UI ---
+st.title("GHS Bhutta Mohabbat Result System")
+subs = ["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
+logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
+
+role = st.selectbox("Login as", ["Admin","Teacher"])
+
+# ---------------- ADMIN -----------------
+if role=="Admin":
+    st.subheader("Admin Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login as Admin"):
+        c.execute("SELECT * FROM admin WHERE username=? AND password=?",(username,password))
+        if c.fetchone():
+            st.success("Logged in as Admin ✅")
+            
+            # --- Password Change Option ---
+            st.subheader("Change Admin Password")
+            old_pw = st.text_input("Current Password", type="password")
+            new_pw = st.text_input("New Password", type="password")
+            if st.button("Update Password"):
+                c.execute("SELECT password FROM admin WHERE username=?",(username,))
+                current_pw = c.fetchone()[0]
+                if old_pw==current_pw and new_pw.strip()!="":
+                    c.execute("UPDATE admin SET password=? WHERE username=?",(new_pw,username))
+                    conn.commit()
+                    st.success("Password updated successfully ✅")
+                else:
+                    st.error("Incorrect current password or new password empty")
+            
+            # --- Admin Panel Tabs ---
+            tab1, tab2, tab3 = st.tabs(["Teacher Management","Student Management","Marks Overview"])
+            
+            with tab1:
+                st.header("Teachers")
+                t_name = st.text_input("Teacher Name")
+                t_class = st.text_input("Assigned Class")
+                if st.button("Add Teacher"):
+                    if t_name and t_class:
+                        c.execute("INSERT OR IGNORE INTO teachers (name,assigned_class) VALUES (?,?)",(t_name,t_class))
+                        conn.commit()
+                        st.success(f"Teacher {t_name} added with class {t_class}")
+                df_t = pd.read_sql("SELECT * FROM teachers",conn)
+                st.dataframe(df_t)
+            
+            with tab2:
+                st.header("Students")
+                s_name = st.text_input("Student Name")
+                s_father = st.text_input("Father Name")
+                s_class = st.text_input("Class")
+                s_section = st.text_input("Section")
+                s_roll = st.number_input("Roll Number", min_value=1, step=1)
+                if st.button("Add Student"):
+                    c.execute("INSERT OR IGNORE INTO students (roll,name,father,class,section) VALUES (?,?,?,?,?)",
+                              (s_roll,s_name,s_father,s_class,s_section))
+                    conn.commit()
+                    st.success(f"Student {s_name} added")
+                df_s = pd.read_sql("SELECT * FROM students",conn)
+                st.dataframe(df_s)
+                
+                st.subheader("Student Actions")
+                for idx,row in df_s.iterrows():
+                    col1,col2,col3 = st.columns([2,1,1])
+                    col1.write(f"{row['name']} (Roll {row['roll']})")
+                    if col2.button("Print PDF", key=f"print_{row['roll']}"):
+                        # Fetch marks
+                        c.execute("SELECT subject,total,obtained FROM marks WHERE roll=?",(row['roll'],))
+                        marks_rows = c.fetchall()
+                        marks_dict = {r[0]:{"total":r[1],"obt":r[2]} for r in marks_rows}
+                        pdf_data = {"school_name":"GHS Bhutta Mohabbat",
+                                    "emis":"39310025",
+                                    "district":"Okara",
+                                    "session":"2025-2026",
+                                    "logo":logo,
+                                    "student_name":row['name'],
+                                    "father_name":row['father'],
+                                    "class":row['class'],
+                                    "roll":row['roll'],
+                                    "section":row['section'],
+                                    "position":"---",
+                                    "marks_data":marks_dict,
+                                    "date":datetime.date.today().strftime("%d-%m-%Y")}
+                        pdf_bytes = generate_pdf(pdf_data)
+                        st.download_button(f"Download PDF ({row['name']})",pdf_bytes,f"Result_{row['name']}.pdf","application/pdf")
+                    if col3.button("Delete", key=f"del_{row['roll']}"):
+                        c.execute("DELETE FROM marks WHERE roll=?",(row['roll'],))
+                        c.execute("DELETE FROM students WHERE roll=?",(row['roll'],))
+                        conn.commit()
+                        st.warning(f"{row['name']} deleted")
+                        st.experimental_rerun()
