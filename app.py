@@ -6,6 +6,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.platypus import Table, TableStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.barcharts import VerticalBarChart
+from reportlab.graphics import renderPDF
 import io
 import datetime
 
@@ -39,14 +42,12 @@ def generate_pdf(data):
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
-
     # Borders
     p.setStrokeColor(colors.HexColor("#7B96AC"))
     p.setLineWidth(2)
     p.rect(15, 15, width - 30, height - 30)
     p.setLineWidth(1)
     p.rect(20, 20, width - 40, height - 40)
-
     # Header
     p.setFont("Helvetica", 9)
     p.drawCentredString(width / 2 + 30, height - 45, "SCHOOL EDUCATION DEPARTMENT")
@@ -57,19 +58,16 @@ def generate_pdf(data):
     p.setFont("Helvetica-Bold", 20)
     p.setFillColor(colors.HexColor("#7B96AC"))
     p.drawCentredString(width / 2, height - 115, "STUDENT REPORT CARD")
-
     # Logo
     if data.get('logo'):
         try:
             logo_reader = ImageReader(data['logo'])
             p.drawImage(logo_reader, 45, height - 105, width=65, height=65, mask='auto')
         except: pass
-
     # Session
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Bold", 9)
     p.drawString(40, height - 130, f"Session {data['session']}")
-
     # Student Info
     info_data = [
         [f"NAME: {data['student_name'].upper()}", f"FATHER NAME: {data['father_name'].upper()}"],
@@ -91,7 +89,6 @@ def generate_pdf(data):
                             ('VALIGN',(0,0),(-1,-1),'MIDDLE')]))
     t1.wrapOn(p,40,height-160); t1.drawOn(p,40,height-160)
     t2.wrapOn(p,40,height-180); t2.drawOn(p,40,height-180)
-
     # Marks Table
     y_table = height-215
     p.setFillColor(colors.HexColor("#333333"))
@@ -113,14 +110,12 @@ def generate_pdf(data):
         p.drawCentredString(495,y_row+7,str(info['obt']))
         grand_total_max+=info['total']; grand_total_obt+=info['obt']
         y_row-=22
-
     # Grand Total
     p.setFont("Helvetica-Bold",10)
     p.rect(40,y_row,515,22)
     p.drawString(45,y_row+7,"GRAND TOTAL")
     p.drawCentredString(385,y_row+7,str(grand_total_max))
     p.drawCentredString(495,y_row+7,str(grand_total_obt))
-
     # Result Summary
     y_summary = y_row-40
     perc = (grand_total_obt/grand_total_max*100) if grand_total_max>0 else 0
@@ -131,16 +126,183 @@ def generate_pdf(data):
         p.rect(40+(i*box_w),y_summary,box_w,30)
         p.setFont("Helvetica-Bold",8)
         p.drawCentredString(40+(i*box_w)+(box_w/2),y_summary+18,f"{label}: {val}")
-
     p.showPage(); p.save()
     buffer.seek(0)
     return buffer
 
-# ---------------------------
-# UI Start
-# ---------------------------
+def generate_class_pdf_with_chart(summary, class_name):
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    p.setFont("Helvetica-Bold", 16)
+    p.drawCentredString(width/2, height-50, f"Class Summary: {class_name}")
+    # Table data
+    data = [["Roll", "Name", "Total Marks", "Obtained", "Percentage", "Grade"]]
+    percentages = []
+    names = []
+    for s in summary:
+        data.append([s["Roll"], s["Name"], s["Total Marks"], s["Obtained"], s["Percentage"], s["Grade"]])
+        percentages.append(float(s["Percentage"][:-1]))
+        names.append(s["Name"])
+    table = Table(data, colWidths=[50,150,80,80,80,80])
+    table.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor("#7B96AC")),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('ALIGN',(0,0),(-1,-1),'CENTER'),
+        ('GRID',(0,0),(-1,-1),0.5,colors.black)
+    ]))
+    table.wrapOn(p, 40, height-100)
+    table.drawOn(p, 40, height - 100 - 22*len(data))
+    # Bar chart
+    drawing = Drawing(500, 200)
+    bc = VerticalBarChart()
+    bc.x = 50; bc.y = 20; bc.height = 150; bc.width = 400
+    bc.data = [percentages]
+    bc.categoryAxis.categoryNames = names
+    bc.barWidth = 10; bc.groupSpacing = 10
+    bc.valueAxis.valueMin = 0; bc.valueAxis.valueMax = 100; bc.valueAxis.valueStep = 10
+    drawing.add(bc)
+    renderPDF.draw(drawing, p, 40, 50)
+    # Stats
+    avg_perc = sum(percentages)/len(percentages)
+    top_student = max(summary, key=lambda x: float(x["Percentage"][:-1]))
+    pass_count = sum(1 for p in percentages if p>=40)
+    fail_count = len(percentages) - pass_count
+    stats_text = f"Class Average: {avg_perc:.1f}%  |  Topper: {top_student['Name']} ({top_student['Percentage']})  |  Pass: {pass_count}, Fail: {fail_count}"
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(40, 30, stats_text)
+    p.showPage(); p.save(); buffer.seek(0)
+    return buffer
+
+# --- UI ---
 st.title("GHS Bhutta Mohabbat Result System")
 logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
 subs=["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
+st.info("Enter student marks and generate report cards without login.")
 
-st.info("You can now directly enter student marks and generate report cards without login.")
+# --- Student Entry Form ---
+with st.form("student_form"):
+    col1, col2 = st.columns(2)
+    with col1:
+        name = st.text_input("Student Name")
+        father = st.text_input("Father Name")
+        roll = st.number_input("Roll No", min_value=1, step=1)
+    with col2:
+        class_name = st.text_input("Class")
+        section = st.text_input("Section")
+        session = st.text_input("Session (e.g., 2025-26)")
+        position = st.text_input("Position (optional)")
+    st.subheader("Enter Marks")
+    marks_data = {}
+    for sub in subs:
+        col1, col2 = st.columns(2)
+        with col1:
+            total = st.number_input(f"Total Marks ({sub})", min_value=0, value=100)
+        with col2:
+            obt = st.number_input(f"Obtained Marks ({sub})", min_value=0, value=0)
+        marks_data[sub] = {"total": total, "obt": obt}
+    submit = st.form_submit_button("Save & Generate PDF")
+    if submit:
+        c.execute("INSERT OR REPLACE INTO students (roll, name, father, class, section) VALUES (?,?,?,?,?)",
+                  (roll, name, father, class_name, section))
+        for sub, info in marks_data.items():
+            c.execute("INSERT INTO marks (roll, subject, total, obtained, date) VALUES (?,?,?,?,?)",
+                      (roll, sub, info['total'], info['obt'], datetime.date.today().isoformat()))
+        conn.commit()
+        pdf_data = {
+            "school_name": "GHS Bhutta Mohabbat",
+            "emis": "123456",
+            "district": "Some District",
+            "student_name": name,
+            "father_name": father,
+            "roll": roll,
+            "class": class_name,
+            "section": section,
+            "session": session,
+            "position": position or "-",
+            "marks_data": marks_data,
+            "logo": logo
+        }
+        pdf_buffer = generate_pdf(pdf_data)
+        st.success("Student saved! Download the PDF below:")
+        st.download_button("Download Report Card", pdf_buffer, file_name=f"{name}_report.pdf", mime="application/pdf")
+
+# --- View / Edit / Delete Students ---
+st.subheader("Manage Existing Students")
+c.execute("SELECT roll, name, class, section FROM students ORDER BY roll")
+students_list = c.fetchall()
+if students_list:
+    roll_to_name = {f"{roll} - {name} ({cls}-{sec})": roll for roll, name, cls, sec in students_list}
+    selected_student = st.selectbox("Select Student", options=list(roll_to_name.keys()))
+    if selected_student:
+        roll = roll_to_name[selected_student]
+        c.execute("SELECT name, father, class, section FROM students WHERE roll=?", (roll,))
+        s = c.fetchone()
+        c.execute("SELECT subject, total, obtained FROM marks WHERE roll=?", (roll,))
+        marks_rows = c.fetchall()
+        marks_data = {sub: {"total": total, "obt": obt} for sub, total, obt in marks_rows}
+        st.write(f"**Student Name:** {s[0]}  |  **Father:** {s[1]}  |  **Class:** {s[2]}  |  **Section:** {s[3]}")
+        st.write("**Marks:**")
+        st.table([{ "Subject": sub, "Total": info["total"], "Obtained": info["obt"] } for sub, info in marks_data.items()])
+        # Edit/Delete Form
+        with st.form("edit_student_form"):
+            name_new = st.text_input("Student Name", value=s[0])
+            father_new = st.text_input("Father Name", value=s[1])
+            class_new = st.text_input("Class", value=s[2])
+            section_new = st.text_input("Section", value=s[3])
+            marks_new = {}
+            for sub, info in marks_data.items():
+                col1, col2 = st.columns(2)
+                with col1:
+                    total_new = st.number_input(f"Total Marks ({sub})", min_value=0, value=info["total"], key=f"total_{sub}")
+                with col2:
+                    obt_new = st.number_input(f"Obtained Marks ({sub})", min_value=0, value=info["obt"], key=f"obt_{sub}")
+                marks_new[sub] = {"total": total_new, "obt": obt_new}
+            submitted = st.form_submit_button("Update Student")
+            if submitted:
+                c.execute("UPDATE students SET name=?, father=?, class=?, section=? WHERE roll=?",
+                          (name_new, father_new, class_new, section_new, roll))
+                for sub, info in marks_new.items():
+                    c.execute("UPDATE marks SET total=?, obtained=? WHERE roll=? AND subject=?",
+                              (info["total"], info["obt"], roll, sub))
+                conn.commit()
+                st.success("Student updated!")
+        if st.button("Delete Student Record"):
+            c.execute("DELETE FROM students WHERE roll=?", (roll,))
+            c.execute("DELETE FROM marks WHERE roll=?", (roll,))
+            conn.commit()
+            st.success("Student deleted!")
+else:
+    st.info("No students found in database.")
+
+# --- Class-wise Summary ---
+st.subheader("Class-wise Summary")
+c.execute("SELECT DISTINCT class, section FROM students ORDER BY class")
+classes = c.fetchall()
+if classes:
+    class_options = [f"{cls}-{sec}" for cls, sec in classes]
+    selected_class = st.selectbox("Select Class for Summary", options=class_options)
+    if selected_class:
+        cls, sec = selected_class.split("-")
+        c.execute("SELECT roll, name FROM students WHERE class=? AND section=?", (cls, sec))
+        students = c.fetchall()
+        if students:
+            summary = []
+            for roll, name in students:
+                c.execute("SELECT SUM(total), SUM(obtained) FROM marks WHERE roll=?", (roll,))
+                total, obtained = c.fetchone()
+                perc = (obtained / total * 100) if total>0 else 0
+                grade, _ = get_grade_info(perc)
+                summary.append({"Name": name, "Roll": roll, "Total Marks": total, "Obtained": obtained, "Percentage": f"{perc:.1f}%", "Grade": grade})
+            st.table(summary)
+            percentages = [float(s["Percentage"][:-1]) for s in summary]
+            avg_perc = sum(percentages)/len(percentages)
+            top_student = max(summary, key=lambda x: float(x["Percentage"][:-1]))
+            pass_count = sum(1 for p in percentages if p>=40)
+            fail_count = len(percentages)-pass_count
+            st.info(f"Class Average: {avg_perc:.1f}% | Topper: {top_student['Name']} ({top_student['Percentage']}) | Pass: {pass_count}, Fail: {fail_count}")
+            if st.button("Download Class Summary PDF"):
+                pdf_buffer = generate_class_pdf_with_chart(summary, selected_class)
+                st.download_button(f"Download PDF ({selected_class})", pdf_buffer, file_name=f"{selected_class}_summary.pdf", mime="application/pdf")
+else:
+    st.info("No classes found in database.")
