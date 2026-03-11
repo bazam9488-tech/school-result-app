@@ -1,7 +1,6 @@
 # app.py
 import streamlit as st
 import sqlite3
-import pandas as pd
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
@@ -221,15 +220,33 @@ with tab2:
     if roll_input:
         st.subheader(f"Enter Marks for {name_input}")
         today = st.date_input("Test Date")
+
+        # Fetch previous marks
+        c.execute("SELECT id, subject, total, obtained FROM marks WHERE roll=?",(roll_input,))
+        prev_marks = {row[1]: {"id": row[0], "total": row[2], "obt": row[3]} for row in c.fetchall()}
+
         marks_entry = {}
         for s in subs:
             c1, c2, c3 = st.columns([1,1,1])
-            total_marks = c2.number_input(f"Total ({s})",1,100,50,key=f"b_t{s}")
-            obtained_marks = c3.number_input(f"Obtained ({s})",0,total_marks,40,key=f"b_o{s}")
+            total_marks = c2.number_input(
+                f"Total ({s})",1,100,
+                value=prev_marks[s]["total"] if s in prev_marks else 50,
+                key=f"b_t{s}"
+            )
+            obtained_marks = c3.number_input(
+                f"Obtained ({s})",0,total_marks,
+                value=prev_marks[s]["obt"] if s in prev_marks else 0,
+                key=f"b_o{s}"
+            )
             marks_entry[s] = {"total": total_marks,"obt": obtained_marks}
+
             if st.button(f"Save Marks ({s})",key=f"save_{s}"):
-                c.execute("INSERT INTO marks (roll,subject,total,obtained,date) VALUES (?,?,?,?,?)",
-                          (roll_input,s,total_marks,obtained_marks,str(today)))
+                if s in prev_marks:
+                    c.execute("UPDATE marks SET total=?, obtained=?, date=? WHERE id=?",
+                              (total_marks, obtained_marks, str(today), prev_marks[s]["id"]))
+                else:
+                    c.execute("INSERT INTO marks (roll,subject,total,obtained,date) VALUES (?,?,?,?,?)",
+                              (roll_input, s, total_marks, obtained_marks, str(today)))
                 conn.commit()
                 st.success(f"{s} marks saved for Roll {roll_input}")
 
