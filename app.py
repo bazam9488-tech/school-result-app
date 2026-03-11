@@ -36,14 +36,9 @@ if not c.fetchone():
     conn.commit()
 
 # --- Session State ---
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
-if "teacher_logged_in" not in st.session_state:
-    st.session_state.teacher_logged_in = False
-if "admin_username" not in st.session_state:
-    st.session_state.admin_username = ""
-if "teacher_username" not in st.session_state:
-    st.session_state.teacher_username = ""
+for key in ["admin_logged_in","teacher_logged_in","admin_username","teacher_username"]:
+    if key not in st.session_state:
+        st.session_state[key] = False if "logged_in" in key else ""
 
 # --- Helper Functions ---
 def get_grade_info(percentage):
@@ -151,21 +146,6 @@ def generate_pdf(data):
         p.setFont("Helvetica-Bold",8)
         p.drawCentredString(40+(i*box_w)+(box_w/2),y_summary+18,f"{label}: {val}")
 
-    # Top 3 Students
-    if "class_top3" in data:
-        y_top = y_summary - 60
-        p.setFont("Helvetica-Bold",10)
-        p.drawString(40, y_top+12, "Class Top 3:")
-        p.setFont("Helvetica",9)
-        p.rect(40, y_top-50, 515, 50, fill=0)
-        p.line(40+350, y_top-50, 40+350, y_top)
-        p.line(40+450, y_top-50, 40+450, y_top)
-        for idx, (name, total, pos) in enumerate(data['class_top3']):
-            y_pos = y_top - (idx*15) - 15
-            p.drawString(45, y_pos, f"{pos}. {name}")
-            p.drawCentredString(405, y_pos, str(total))
-            p.drawCentredString(495, y_pos, f"Pos {pos}")
-
     # Quotes & Signatures
     p.setFillColor(colors.black)
     p.setFont("Helvetica-Oblique",11)
@@ -193,8 +173,8 @@ if role=="Admin":
     if not st.session_state.admin_logged_in:
         st.subheader("Admin Login")
         with st.form("admin_login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
+            username = st.text_input("Username").strip()
+            password = st.text_input("Password", type="password").strip()
             submitted = st.form_submit_button("Login")
             if submitted:
                 c.execute("SELECT * FROM admin WHERE username=? AND password=?", (username,password))
