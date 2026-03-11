@@ -24,21 +24,13 @@ c.execute('''CREATE TABLE IF NOT EXISTS marks
 c.execute('''CREATE TABLE IF NOT EXISTS teachers
              (id INTEGER PRIMARY KEY AUTOINCREMENT,
               name TEXT UNIQUE, assigned_class TEXT)''')
-c.execute('''CREATE TABLE IF NOT EXISTS admin
-             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-              username TEXT UNIQUE,
-              password TEXT)''')
-
-# --- Ensure default admin exists ---
-c.execute("SELECT * FROM admin WHERE username='admin'")
-if not c.fetchone():
-    c.execute("INSERT INTO admin (username,password) VALUES (?,?)", ("admin","admin123"))
-    conn.commit()
+conn.commit()
 
 # --- Session State ---
-for key in ["admin_logged_in","teacher_logged_in","admin_username","teacher_username"]:
-    if key not in st.session_state:
-        st.session_state[key] = False if "logged_in" in key else ""
+if "teacher_logged_in" not in st.session_state:
+    st.session_state.teacher_logged_in = False
+if "teacher_username" not in st.session_state:
+    st.session_state.teacher_username = ""
 
 # --- Helper Functions ---
 def get_grade_info(percentage):
@@ -146,16 +138,6 @@ def generate_pdf(data):
         p.setFont("Helvetica-Bold",8)
         p.drawCentredString(40+(i*box_w)+(box_w/2),y_summary+18,f"{label}: {val}")
 
-    # Quotes & Signatures
-    p.setFillColor(colors.black)
-    p.setFont("Helvetica-Oblique",11)
-    p.drawCentredString(A4[0]/2,200,'"Education is the most powerful weapon which you can use to change the world."')
-    p.drawCentredString(A4[0]/2,180,'"The beautiful thing about learning is that no one can take it away from you."')
-    p.setFont("Helvetica-Bold",9)
-    p.line(80,110,210,110); p.drawCentredString(145,95,"CLASS TEACHER")
-    p.line(A4[0]-240,110,A4[0]-40,110); p.drawCentredString(A4[0]-140,95,"SENIOR HEAD MASTER (SAFDAR JAVED)")
-    p.setFont("Helvetica",8); p.drawRightString(A4[0]-40,60,f"Result Declaration Date: {data['date']}")
-
     p.showPage(); p.save()
     buffer.seek(0)
     return buffer
@@ -164,29 +146,27 @@ def generate_pdf(data):
 # UI Start
 # ---------------------------
 st.title("GHS Bhutta Mohabbat Result System")
-role = st.selectbox("Login as",["Admin","Teacher"])
+role = st.selectbox("Login as",["Teacher"])  # Only Teacher now
 logo = st.file_uploader("Upload Logo (used in PDFs)", type=["jpg","png","jpeg"])
 subs=["English","Urdu","Mathematics","Islamiat","Science","Social Study","Computer","Tarjuma-tu-Quran"]
 
-# --- Admin Login ---
-if role=="Admin":
-    if not st.session_state.admin_logged_in:
-        st.subheader("Admin Login")
-        with st.form("admin_login_form"):
-            username = st.text_input("Username").strip()
-            password = st.text_input("Password", type="password").strip()
-            submitted = st.form_submit_button("Login")
-            if submitted:
-                c.execute("SELECT * FROM admin WHERE username=? AND password=?", (username,password))
-                if c.fetchone():
-                    st.session_state.admin_logged_in=True
-                    st.session_state.admin_username=username
-                    st.success("Logged in as Admin")
-                    st.experimental_rerun()
-                else:
-                    st.error("Invalid credentials")
+# --- Teacher Login ---
+if not st.session_state.teacher_logged_in:
+    st.subheader("Teacher Login")
+    with st.form("teacher_login_form"):
+        username = st.text_input("Teacher Name").strip()
+        submitted = st.form_submit_button("Login")
+        if submitted:
+            c.execute("SELECT * FROM teachers WHERE name=?", (username,))
+            if c.fetchone():
+                st.session_state.teacher_logged_in=True
+                st.session_state.teacher_username=username
+                st.success(f"Logged in as {username}")
+                st.experimental_rerun()
+            else:
+                st.error("Teacher not found! Please contact admin to add teacher.")
 
-# --- Admin Panel ---
-if st.session_state.admin_logged_in:
-    st.subheader(f"Welcome Admin: {st.session_state.admin_username}")
-    st.info("You can now manage teachers, students, and generate report cards.")
+# --- Teacher Panel ---
+if st.session_state.teacher_logged_in:
+    st.subheader(f"Welcome Teacher: {st.session_state.teacher_username}")
+    st.info("You can now add student marks and generate report cards.")
